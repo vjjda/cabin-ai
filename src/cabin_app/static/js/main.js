@@ -6,6 +6,7 @@ const vieDiv = document.getElementById('vie-content');
 const statusDiv = document.getElementById('status');
 const micSelect = document.getElementById('mic-select');
 const providerSelect = document.getElementById('provider-select');
+const sttSelect = document.getElementById('stt-select'); // New STT Select
 const paddingSlider = document.getElementById('padding-slider');
 const paddingVal = document.getElementById('padding-val');
 const pauseBtn = document.getElementById('pause-btn');
@@ -16,8 +17,13 @@ let isPaused = false;
 // --- INITIALIZATION ---
 function init() {
     // Set default provider from injected config
-    if (window.CABIN_CONFIG && window.CABIN_CONFIG.DEFAULT_PROVIDER) {
-        if(providerSelect) providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
+    if (window.CABIN_CONFIG) {
+        if (window.CABIN_CONFIG.DEFAULT_PROVIDER && providerSelect) {
+            providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
+        }
+        if (window.CABIN_CONFIG.DEFAULT_STT && sttSelect) {
+            sttSelect.value = window.CABIN_CONFIG.DEFAULT_STT;
+        }
     }
     
     // Load devices and start connection
@@ -111,22 +117,25 @@ function connect() {
 
     const deviceId = micSelect ? micSelect.value : "";
     const provider = providerSelect ? providerSelect.value : "mock";
+    const sttProvider = sttSelect ? sttSelect.value : "groq"; // New Param
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
     // Build URL with params
     const urlParams = new URLSearchParams();
     if (deviceId) urlParams.append('device_id', deviceId);
     urlParams.append('provider', provider);
+    urlParams.append('stt_provider', sttProvider);
 
     const wsUrl = `${protocol}//${window.location.host}/ws/cabin?${urlParams.toString()}`;
     
-    if (statusDiv) statusDiv.innerText = `Connecting (${provider})...`;
+    if (statusDiv) statusDiv.innerText = `Connecting (${provider} + ${sttProvider})...`;
     
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         if (statusDiv) {
-            statusDiv.innerText = `Connected 🟢 (${provider.toUpperCase()})`;
+            statusDiv.innerText = `Connected 🟢 (STT: ${sttProvider.toUpperCase()} | AI: ${provider.toUpperCase()})`;
             statusDiv.style.color = "#00ff88";
         }
         // Sync pause state on reconnect if needed, or reset
@@ -173,6 +182,14 @@ if (providerSelect) {
     providerSelect.addEventListener('change', () => {
         const newProvider = providerSelect.options[providerSelect.selectedIndex].text;
         addSystemSeparator(`Switching AI to ${newProvider}`);
+        connect();
+    });
+}
+
+if (sttSelect) {
+    sttSelect.addEventListener('change', () => {
+        const newSTT = sttSelect.options[sttSelect.selectedIndex].text;
+        addSystemSeparator(`Switching STT to ${newSTT}`);
         connect();
     });
 }

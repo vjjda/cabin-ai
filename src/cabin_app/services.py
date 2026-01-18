@@ -19,7 +19,7 @@ try:
         PrerecordedOptions,
         FileSource,
     )
-HAS_DEEPGRAM = True
+    HAS_DEEPGRAM = True
 except ImportError:
     HAS_DEEPGRAM = False
 

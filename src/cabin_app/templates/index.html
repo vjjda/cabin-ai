@@ -36,6 +36,15 @@
 
             <div class="settings-group">
                 <div class="setting-item">
+                    <label>🎙️ STT:</label>
+                    <select id="stt-select">
+                        <option value="groq">⚡ Groq Whisper</option>
+                        <option value="deepgram">🌊 Deepgram Nova-2</option>
+                        <option value="mock">🧪 Mock Test</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
                     <label>🧠 AI:</label>
                     <select id="provider-select">
                         <option value="groq">⚡ Groq (Llama3)</option>
@@ -70,7 +79,8 @@
     <!-- Configuration Injection (Server-side) -->
     <script>
         window.CABIN_CONFIG = {
-            DEFAULT_PROVIDER: "{{TRANSLATION_PROVIDER}}"
+            DEFAULT_PROVIDER: "{{TRANSLATION_PROVIDER}}",
+            DEFAULT_STT: "{{STT_PROVIDER}}"
         };
     </script>
 
