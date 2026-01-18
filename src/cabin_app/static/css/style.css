@@ -91,6 +91,33 @@ select:focus, input:focus {
     color: #00ff88;
     font-weight: bold;
 }
+
+/* Icon Button (Pause/Resume) */
+.icon-btn {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: white;
+    font-size: 1.2rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    background: #444;
+    border-color: #666;
+}
+
+.icon-btn.paused {
+    background: #442222;
+    border-color: #ff5555;
+    color: #ff5555;
+}
 /* ----------------------------------------- */
 
 .container {

@@ -8,18 +8,23 @@ const micSelect = document.getElementById('mic-select');
 const providerSelect = document.getElementById('provider-select');
 const paddingSlider = document.getElementById('padding-slider');
 const paddingVal = document.getElementById('padding-val');
+const pauseBtn = document.getElementById('pause-btn');
 
 let ws = null;
+let isPaused = false;
 
 // --- INITIALIZATION ---
 function init() {
     // Set default provider from injected config
     if (window.CABIN_CONFIG && window.CABIN_CONFIG.DEFAULT_PROVIDER) {
-        providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
+        if(providerSelect) providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
     }
     
     // Load devices and start connection
     loadDevices();
+    
+    // Register global shortcuts
+    document.addEventListener('keydown', handleGlobalShortcuts);
 }
 
 // --- LOGIC UI SCROLL PADDING ---
@@ -27,15 +32,52 @@ if (paddingSlider) {
     paddingSlider.addEventListener('input', (e) => {
         const val = e.target.value;
         if (paddingVal) paddingVal.innerText = val + "%";
-        
-        // Update CSS variable immediately
         document.documentElement.style.setProperty('--scroll-padding', val + 'vh');
-        
-        // Scroll to see effect
         scrollToBottom(engDiv);
         scrollToBottom(vieDiv);
     });
 }
+
+// --- PAUSE / RESUME LOGIC ---
+function togglePause() {
+    isPaused = !isPaused;
+    updatePauseUI();
+    
+    // Send command to server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const cmd = isPaused ? "pause" : "resume";
+        ws.send(JSON.stringify({ command: cmd }));
+    }
+}
+
+function updatePauseUI() {
+    if (pauseBtn) {
+        if (isPaused) {
+            pauseBtn.innerText = "▶️";
+            pauseBtn.classList.add("paused");
+            pauseBtn.title = "Resume (Space)";
+            addSystemSeparator("⏸️ Paused");
+        } else {
+            pauseBtn.innerText = "⏸️";
+            pauseBtn.classList.remove("paused");
+            pauseBtn.title = "Pause (Space)";
+            addSystemSeparator("▶️ Resumed");
+        }
+    }
+}
+
+function handleGlobalShortcuts(e) {
+    // Spacebar to toggle pause
+    if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+        e.preventDefault(); // Prevent scrolling
+        togglePause();
+    }
+}
+
+if (pauseBtn) {
+    pauseBtn.addEventListener('click', togglePause);
+}
+
 
 // --- CONNECTION LOGIC ---
 async function loadDevices() {
@@ -87,6 +129,10 @@ function connect() {
             statusDiv.innerText = `Connected 🟢 (${provider.toUpperCase()})`;
             statusDiv.style.color = "#00ff88";
         }
+        // Sync pause state on reconnect if needed, or reset
+        if (isPaused) {
+            ws.send(JSON.stringify({ command: "pause" }));
+        }
     };
 
     ws.onmessage = (event) => {
@@ -98,6 +144,8 @@ function connect() {
                 appendMessage(vieDiv, data.text, 'vie');
             } else if (data.type === 'error') {
                 appendMessage(engDiv, data.text, 'error');
+            } else if (data.type === 'status') {
+                // Sync status from server if needed (optional)
             }
         } catch (e) {
             console.error("Error parsing WS message:", e);
