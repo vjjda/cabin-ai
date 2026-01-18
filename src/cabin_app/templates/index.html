@@ -25,7 +25,6 @@
             box-sizing: border-box;
         }
         
-        /* Header Area with Settings */
         .header {
             display: flex;
             justify-content: space-between;
@@ -47,20 +46,9 @@
             border: 1px solid var(--border-color);
             padding: 8px;
             border-radius: 4px;
-            min-width: 200px;
+            min-width: 250px;
         }
-        button {
-            background: var(--accent-color);
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover { opacity: 0.9; }
 
-        /* Content Area */
         .container {
             display: flex;
             gap: 20px;
@@ -147,7 +135,6 @@
         const micSelect = document.getElementById('mic-select');
         let ws = null;
 
-        // 1. Fetch danh sách Microphones
         async function loadDevices() {
             try {
                 const res = await fetch('/api/devices');
@@ -155,20 +142,19 @@
                 
                 micSelect.innerHTML = '';
                 
-                // Thêm lựa chọn Default
+                // Option mặc định
                 const defaultOption = document.createElement('option');
-                defaultOption.value = "";
+                defaultOption.value = ""; 
                 defaultOption.text = "⚙️ Default System Mic";
                 micSelect.appendChild(defaultOption);
 
                 devices.forEach(device => {
                     const option = document.createElement('option');
                     option.value = device.id;
-                    option.text = `🎤 ${device.name}`;
+                    option.text = `🎤 ${device.name} (${device.channels} ch)`;
                     micSelect.appendChild(option);
                 });
 
-                // Kết nối ngay với default sau khi load xong
                 connect(); 
             } catch (err) {
                 console.error("Error loading devices:", err);
@@ -176,16 +162,20 @@
             }
         }
 
-        // 2. Hàm kết nối WebSocket
         function connect() {
             if (ws) {
-                ws.close(); // Đóng kết nối cũ nếu có
+                ws.close();
             }
 
             const deviceId = micSelect.value;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Gửi device_id lên query param
-            const wsUrl = `${protocol}//${window.location.host}/ws/cabin?device_id=${deviceId}`;
+            
+            // --- SỬA LỖI Ở ĐÂY ---
+            // Chỉ thêm tham số device_id vào URL nếu nó có giá trị (không rỗng)
+            let wsUrl = `${protocol}//${window.location.host}/ws/cabin`;
+            if (deviceId) {
+                wsUrl += `?device_id=${deviceId}`;
+            }
             
             console.log("Connecting to:", wsUrl);
             statusDiv.innerText = "Connecting...";
@@ -209,8 +199,9 @@
                 }
             };
 
-            ws.onclose = () => {
-                statusDiv.innerText = "Disconnected 🔴";
+            ws.onclose = (event) => {
+                // Hiển thị mã lỗi nếu có để debug dễ hơn
+                statusDiv.innerText = `Disconnected 🔴 (Code: ${event.code})`;
                 statusDiv.style.color = "#ff4444";
             };
 
@@ -220,10 +211,7 @@
             };
         }
 
-        // 3. Sự kiện khi user chọn mic khác
         micSelect.addEventListener('change', () => {
-            console.log("Switching microphone...");
-            // Xóa nội dung cũ để đỡ rối
             engDiv.innerHTML += '<div style="text-align:center; color:#666; margin:10px">--- Switching Mic ---</div>';
             connect();
         });
@@ -236,7 +224,6 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        // Start App
         loadDevices();
     </script>
 </body>
