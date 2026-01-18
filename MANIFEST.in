@@ -1,1 +1,2 @@
 include src/cabin_app/templates/*.html
+include src/cabin_app/static/css/*.css

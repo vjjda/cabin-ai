@@ -7,6 +7,7 @@ from typing import Optional
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles  # <-- Import thêm StaticFiles
 
 from cabin_app.config import get_settings
 from cabin_app.audio_core import AudioStreamer
@@ -24,8 +25,16 @@ translator = MockTranslator()
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "index.html"
+STATIC_DIR = BASE_DIR / "static"  # <-- Định nghĩa đường dẫn folder static
 
 logger.info(f"📂 Looking for template at: {TEMPLATE_PATH}")
+
+# --- MOUNT STATIC FILES ---
+# Cho phép truy cập: http://host/static/css/style.css
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+else:
+    logger.warning(f"⚠️ Static directory not found at: {STATIC_DIR}")
 
 @app.get("/")
 async def get():
@@ -34,21 +43,17 @@ async def get():
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
-# --- API MỚI: Lấy danh sách thiết bị ---
 @app.get("/api/devices")
 async def get_devices():
-    """Trả về danh sách microphone để Frontend hiển thị"""
-    # Khởi tạo tạm thời để lấy danh sách rồi đóng ngay
     temp_streamer = AudioStreamer()
     devices = temp_streamer.get_input_devices()
-    temp_streamer.stop_stream() # Dọn dẹp
+    temp_streamer.stop_stream()
     return JSONResponse(content=devices)
 
-# --- Update WebSocket: Nhận device_id ---
 @app.websocket("/ws/cabin")
 async def websocket_endpoint(
     websocket: WebSocket, 
-    device_id: Optional[int] = Query(None) # Lấy param ?device_id=...
+    device_id: Optional[int] = Query(None)
 ):
     await websocket.accept()
     logger.info(f"Client connected with Device ID: {device_id}")
@@ -56,7 +61,6 @@ async def websocket_endpoint(
     audio_streamer = AudioStreamer()
     
     try:
-        # Truyền device_id vào hàm start_stream
         audio_generator = audio_streamer.start_stream(device_index=device_id)
     except Exception as e:
         logger.error(f"Failed to open Mic: {e}")
