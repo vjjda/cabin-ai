@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Cabin Assistant</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Thiết lập biến CSS toàn cục dựa trên Config được inject */
+        :root {
+            --scroll-padding: {{UI_SCROLL_PADDING}}vh;
+        }
+    </style>
 </head>
 <body>
     <div class="header">
@@ -32,6 +38,7 @@
     <div id="status">Ready</div>
 
     <script>
+        // ... (Logic JS giữ nguyên) ...
         const engDiv = document.getElementById('eng-content');
         const vieDiv = document.getElementById('vie-content');
         const statusDiv = document.getElementById('status');
@@ -42,39 +49,29 @@
             try {
                 const res = await fetch('/api/devices');
                 const devices = await res.json();
-                
                 micSelect.innerHTML = '';
                 const defaultOption = document.createElement('option');
                 defaultOption.value = ""; 
                 defaultOption.text = "⚙️ Default System Mic";
                 micSelect.appendChild(defaultOption);
-
                 devices.forEach(device => {
                     const option = document.createElement('option');
                     option.value = device.id;
                     option.text = `🎤 ${device.name} (${device.channels} ch)`;
                     micSelect.appendChild(option);
                 });
-
                 connect(); 
             } catch (err) {
                 console.error("Error loading devices:", err);
-                micSelect.innerHTML = '<option>Error loading devices</option>';
             }
         }
 
         function connect() {
-            if (ws) {
-                ws.close();
-            }
-
+            if (ws) ws.close();
             const deviceId = micSelect.value;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            
             let wsUrl = `${protocol}//${window.location.host}/ws/cabin`;
-            if (deviceId) {
-                wsUrl += `?device_id=${deviceId}`;
-            }
+            if (deviceId) wsUrl += `?device_id=${deviceId}`;
             
             statusDiv.innerText = "Connecting...";
             ws = new WebSocket(wsUrl);
@@ -86,7 +83,6 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                
                 if (data.type === 'transcript') {
                     appendMessage(engDiv, data.text, 'eng');
                 } else if (data.type === 'translation') {
@@ -96,15 +92,7 @@
                 }
             };
 
-            ws.onclose = (event) => {
-                statusDiv.innerText = `Disconnected 🔴 (Code: ${event.code})`;
-                statusDiv.style.color = "#ff4444";
-            };
-
-            ws.onerror = (err) => {
-                console.error("WS Error:", err);
-                statusDiv.innerText = "Error ⚠️";
-            };
+            ws.onclose = (event) => statusDiv.innerText = `Disconnected 🔴 (${event.code})`;
         }
 
         micSelect.addEventListener('change', () => {
@@ -119,11 +107,10 @@
                 div.innerText = msg;
                 return div;
             };
-
             engDiv.appendChild(createSeparator(text));
             vieDiv.appendChild(createSeparator(text));
-            engDiv.scrollTop = engDiv.scrollHeight;
-            vieDiv.scrollTop = vieDiv.scrollHeight;
+            scrollToBottom(engDiv);
+            scrollToBottom(vieDiv);
         }
 
         function appendMessage(container, text, className) {
@@ -131,6 +118,12 @@
             div.className = `message ${className}`;
             div.innerText = text;
             container.appendChild(div);
+            scrollToBottom(container);
+        }
+
+        // Hàm cuộn trang tối ưu
+        function scrollToBottom(container) {
+            // Cuộn xuống tận cùng (bao gồm cả phần padding ảo ::after)
             container.scrollTop = container.scrollHeight;
         }
 

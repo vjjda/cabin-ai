@@ -83,6 +83,16 @@ select {
     font-size: 1.2em;
     line-height: 1.6;
     scroll-behavior: smooth;
+    position: relative; /* Quan trọng để định vị */
+}
+
+/* TẠO KHOẢNG TRỐNG BÊN DƯỚI */
+.content-area::after {
+    content: "";
+    display: block;
+    /* Giá trị này sẽ được override bởi biến CSS từ file HTML */
+    height: var(--scroll-padding, 30vh); 
+    width: 100%;
 }
 
 /* Message Styles */

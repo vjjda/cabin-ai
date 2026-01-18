@@ -71,8 +71,19 @@ if STATIC_DIR.exists():
 async def get():
     if not TEMPLATE_PATH.exists():
         return HTMLResponse(content="<h1>Error: Template not found</h1>", status_code=404)
+    
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+        html_content = f.read()
+        
+    # --- TEMPLATE INJECTION ---
+    # Thay thế placeholder bằng giá trị từ config
+    # UI_SCROLL_PADDING mặc định là 40, sẽ thành "40"
+    html_content = html_content.replace(
+        "{{UI_SCROLL_PADDING}}", 
+        str(settings.UI_SCROLL_PADDING)
+    )
+        
+    return HTMLResponse(content=html_content)
 
 @app.get("/api/devices")
 async def get_devices():
