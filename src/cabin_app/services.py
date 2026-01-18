@@ -3,6 +3,7 @@ import abc
 import asyncio
 from typing import Dict
 
+
 class Transcriber(abc.ABC):
     @abc.abstractmethod
     async def process_audio(self, audio_chunk: bytes) -> str:

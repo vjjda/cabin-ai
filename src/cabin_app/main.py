@@ -1,14 +1,15 @@
 # Path: src/cabin_app/main.py
 import asyncio
 import logging
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
-from pathlib import Path
 
+from cabin_app.audio_core import AudioStreamer
 # --- Import modules nội bộ ---
 from cabin_app.config import get_settings
-from cabin_app.audio_core import AudioStreamer
 from cabin_app.services import MockTranscriber, MockTranslator
 
 # --- Cấu hình Logging ---

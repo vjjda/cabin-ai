@@ -1,7 +1,9 @@
 # Path: src/cabin_app/audio_core.py
-import pyaudio
 import logging
 from typing import Generator, Optional
+
+import pyaudio
+
 # Import absolute path từ root package
 from cabin_app.config import get_settings
 
