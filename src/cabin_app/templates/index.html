@@ -12,6 +12,7 @@
             --accent-color: #00ff88;
             --secondary-color: #00ccff;
             --border-color: #444;
+            --system-color: #888;
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -79,16 +80,50 @@
             line-height: 1.6;
             scroll-behavior: smooth;
         }
+        
+        /* Message Styles */
         .message {
             margin-bottom: 12px;
             padding: 10px;
             border-radius: 6px;
             animation: fadeIn 0.3s ease;
         }
-        .eng { color: var(--secondary-color); background: rgba(0, 204, 255, 0.05); border-left: 3px solid var(--secondary-color); }
-        .vie { color: var(--accent-color); background: rgba(0, 255, 136, 0.05); font-weight: 500; border-left: 3px solid var(--accent-color); }
-        .error { color: #ff5555; background: rgba(255, 85, 85, 0.1); border: 1px solid #ff5555; }
+        .eng { 
+            color: var(--secondary-color); 
+            background: rgba(0, 204, 255, 0.05); 
+            border-left: 3px solid var(--secondary-color); 
+        }
+        .vie { 
+            color: var(--accent-color); 
+            background: rgba(0, 255, 136, 0.05); 
+            font-weight: 500; 
+            border-left: 3px solid var(--accent-color); 
+        }
+        .error { 
+            color: #ff5555; 
+            background: rgba(255, 85, 85, 0.1); 
+            border: 1px solid #ff5555; 
+        }
         
+        /* System Divider Style - Căn giữa, màu xám */
+        .system-divider {
+            text-align: center;
+            font-size: 0.85em;
+            color: var(--system-color);
+            margin: 15px 0;
+            position: relative;
+            opacity: 0.7;
+        }
+        .system-divider::before, .system-divider::after {
+            content: "";
+            display: inline-block;
+            width: 20%;
+            height: 1px;
+            background: var(--border-color);
+            vertical-align: middle;
+            margin: 0 10px;
+        }
+
         #status {
             position: fixed;
             bottom: 10px;
@@ -141,8 +176,6 @@
                 const devices = await res.json();
                 
                 micSelect.innerHTML = '';
-                
-                // Option mặc định
                 const defaultOption = document.createElement('option');
                 defaultOption.value = ""; 
                 defaultOption.text = "⚙️ Default System Mic";
@@ -170,16 +203,12 @@
             const deviceId = micSelect.value;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             
-            // --- SỬA LỖI Ở ĐÂY ---
-            // Chỉ thêm tham số device_id vào URL nếu nó có giá trị (không rỗng)
             let wsUrl = `${protocol}//${window.location.host}/ws/cabin`;
             if (deviceId) {
                 wsUrl += `?device_id=${deviceId}`;
             }
             
-            console.log("Connecting to:", wsUrl);
             statusDiv.innerText = "Connecting...";
-
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
@@ -200,7 +229,6 @@
             };
 
             ws.onclose = (event) => {
-                // Hiển thị mã lỗi nếu có để debug dễ hơn
                 statusDiv.innerText = `Disconnected 🔴 (Code: ${event.code})`;
                 statusDiv.style.color = "#ff4444";
             };
@@ -211,10 +239,29 @@
             };
         }
 
+        // --- CẬP NHẬT LOGIC SWITCH MIC ---
         micSelect.addEventListener('change', () => {
-            engDiv.innerHTML += '<div style="text-align:center; color:#666; margin:10px">--- Switching Mic ---</div>';
+            // Gọi hàm chèn separator vào CẢ HAI bên
+            addSystemSeparator("Switching Microphone");
             connect();
         });
+
+        // Hàm chèn dòng phân cách vào cả 2 cột để giữ vị trí song song
+        function addSystemSeparator(text) {
+            const createSeparator = (msg) => {
+                const div = document.createElement('div');
+                div.className = 'system-divider';
+                div.innerText = msg;
+                return div;
+            };
+
+            engDiv.appendChild(createSeparator(text));
+            vieDiv.appendChild(createSeparator(text)); // Chèn vào cả bên Việt
+
+            // Auto scroll
+            engDiv.scrollTop = engDiv.scrollHeight;
+            vieDiv.scrollTop = vieDiv.scrollHeight;
+        }
 
         function appendMessage(container, text, className) {
             const div = document.createElement('div');
