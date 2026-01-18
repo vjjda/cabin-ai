@@ -1,17 +1,25 @@
 # Path: src/cabin_app/main.py
 import asyncio
 import logging
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles  # <-- Import thêm StaticFiles
+from fastapi.staticfiles import StaticFiles
 
 from cabin_app.config import get_settings
 from cabin_app.audio_core import AudioStreamer
-from cabin_app.services import MockTranscriber, MockTranslator
+# Import các class mới
+from cabin_app.services import (
+    MockTranscriber, 
+    MockTranslator, 
+    GroqTranslator, 
+    OpenAITranslator,
+    Translator
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("CabinServer")
@@ -19,22 +27,45 @@ logger = logging.getLogger("CabinServer")
 app = FastAPI()
 settings = get_settings()
 
-transcriber = MockTranscriber()
-translator = MockTranslator()
-
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 TEMPLATE_PATH = TEMPLATE_DIR / "index.html"
-STATIC_DIR = BASE_DIR / "static"  # <-- Định nghĩa đường dẫn folder static
+STATIC_DIR = BASE_DIR / "static"
+GLOSSARY_PATH = BASE_DIR / "glossary.json"
 
-logger.info(f"📂 Looking for template at: {TEMPLATE_PATH}")
+# --- HELPER: Load Glossary ---
+def load_glossary() -> Dict[str, str]:
+    if GLOSSARY_PATH.exists():
+        try:
+            with open(GLOSSARY_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                logger.info(f"📚 Loaded Glossary with {len(data)} terms.")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load glossary: {e}")
+            return {}
+    return {}
 
-# --- MOUNT STATIC FILES ---
-# Cho phép truy cập: http://host/static/css/style.css
+# --- HELPER: Factory Pattern cho Translator ---
+def get_translator() -> Translator:
+    provider = settings.TRANSLATION_PROVIDER.lower()
+    logger.info(f"🚀 Initializing Translation Provider: {provider.upper()}")
+    
+    if provider == "groq":
+        return GroqTranslator()
+    elif provider == "openai":
+        return OpenAITranslator()
+    else:
+        return MockTranslator()
+
+# Khởi tạo Services
+# Lưu ý: Transcriber hiện vẫn là Mock, bạn sẽ thay thế bằng Deepgram sau.
+transcriber = MockTranscriber()
+translator = get_translator()
+global_glossary = load_glossary()
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-else:
-    logger.warning(f"⚠️ Static directory not found at: {STATIC_DIR}")
 
 @app.get("/")
 async def get():
@@ -56,7 +87,7 @@ async def websocket_endpoint(
     device_id: Optional[int] = Query(None)
 ):
     await websocket.accept()
-    logger.info(f"Client connected with Device ID: {device_id}")
+    logger.info(f"Client connected. Device ID: {device_id}")
     
     audio_streamer = AudioStreamer()
     
@@ -77,11 +108,16 @@ async def websocket_endpoint(
             except Exception:
                 break
 
+            # 1. Speech to Text
             english_text = await transcriber.process_audio(chunk)
 
             if english_text:
                 await websocket.send_json({"type": "transcript", "text": english_text})
-                vietnamese_text = await translator.translate(english_text, {})
+                
+                # 2. Text to Text (Translation) with Glossary
+                # Gọi hàm translate thật (Groq/OpenAI)
+                vietnamese_text = await translator.translate(english_text, global_glossary)
+                
                 await websocket.send_json({"type": "translation", "text": vietnamese_text})
             
             await asyncio.sleep(0.01)
