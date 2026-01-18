@@ -4,19 +4,29 @@
 const engDiv = document.getElementById('eng-content');
 const vieDiv = document.getElementById('vie-content');
 const statusDiv = document.getElementById('status');
+
+// Settings Elements
 const micSelect = document.getElementById('mic-select');
 const providerSelect = document.getElementById('provider-select');
-const sttSelect = document.getElementById('stt-select'); // New STT Select
+const sttSelect = document.getElementById('stt-select');
+const bufferSlider = document.getElementById('buffer-slider');
+const bufferVal = document.getElementById('buffer-val');
 const paddingSlider = document.getElementById('padding-slider');
 const paddingVal = document.getElementById('padding-val');
+
+// Controls
 const pauseBtn = document.getElementById('pause-btn');
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettings = document.getElementById('close-settings');
+const applyBtn = document.getElementById('apply-btn');
 
 let ws = null;
 let isPaused = false;
 
 // --- INITIALIZATION ---
 function init() {
-    // Set default provider from injected config
+    // Inject Config Defaults
     if (window.CABIN_CONFIG) {
         if (window.CABIN_CONFIG.DEFAULT_PROVIDER && providerSelect) {
             providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
@@ -29,11 +39,28 @@ function init() {
     // Load devices and start connection
     loadDevices();
     
-    // Register global shortcuts
+    // Global Shortcuts
     document.addEventListener('keydown', handleGlobalShortcuts);
 }
 
-// --- LOGIC UI SCROLL PADDING ---
+// --- UI LOGIC (Modal, Sliders) ---
+function toggleModal(show) {
+    if (show) {
+        settingsModal.classList.remove('hidden');
+    } else {
+        settingsModal.classList.add('hidden');
+    }
+}
+
+settingsToggle.addEventListener('click', () => toggleModal(true));
+closeSettings.addEventListener('click', () => toggleModal(false));
+
+// Close modal when clicking outside
+settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) toggleModal(false);
+});
+
+// Sliders
 if (paddingSlider) {
     paddingSlider.addEventListener('input', (e) => {
         const val = e.target.value;
@@ -44,12 +71,27 @@ if (paddingSlider) {
     });
 }
 
+if (bufferSlider) {
+    bufferSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (bufferVal) bufferVal.innerText = val + "s";
+    });
+}
+
+if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+        toggleModal(false);
+        addSystemSeparator("Applying Settings & Reconnecting...");
+        connect();
+    });
+}
+
+
 // --- PAUSE / RESUME LOGIC ---
 function togglePause() {
     isPaused = !isPaused;
     updatePauseUI();
     
-    // Send command to server
     if (ws && ws.readyState === WebSocket.OPEN) {
         const cmd = isPaused ? "pause" : "resume";
         ws.send(JSON.stringify({ command: cmd }));
@@ -59,12 +101,12 @@ function togglePause() {
 function updatePauseUI() {
     if (pauseBtn) {
         if (isPaused) {
-            pauseBtn.innerText = "▶️";
+            pauseBtn.innerHTML = "▶️"; // Play icon
             pauseBtn.classList.add("paused");
             pauseBtn.title = "Resume (Space)";
             addSystemSeparator("⏸️ Paused");
         } else {
-            pauseBtn.innerText = "⏸️";
+            pauseBtn.innerHTML = "⏸️"; // Pause icon
             pauseBtn.classList.remove("paused");
             pauseBtn.title = "Pause (Space)";
             addSystemSeparator("▶️ Resumed");
@@ -73,9 +115,8 @@ function updatePauseUI() {
 }
 
 function handleGlobalShortcuts(e) {
-    // Spacebar to toggle pause
-    if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
-        e.preventDefault(); // Prevent scrolling
+    if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT" && settingsModal.classList.contains('hidden')) {
+        e.preventDefault();
         togglePause();
     }
 }
@@ -115,30 +156,31 @@ async function loadDevices() {
 function connect() {
     if (ws) ws.close();
 
+    // Gather Params
     const deviceId = micSelect ? micSelect.value : "";
     const provider = providerSelect ? providerSelect.value : "mock";
-    const sttProvider = sttSelect ? sttSelect.value : "groq"; // New Param
+    const sttProvider = sttSelect ? sttSelect.value : "groq";
+    const bufferSize = bufferSlider ? bufferSlider.value : "1.5";
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
-    // Build URL with params
     const urlParams = new URLSearchParams();
     if (deviceId) urlParams.append('device_id', deviceId);
     urlParams.append('provider', provider);
     urlParams.append('stt_provider', sttProvider);
+    urlParams.append('buffer', bufferSize);
 
     const wsUrl = `${protocol}//${window.location.host}/ws/cabin?${urlParams.toString()}`;
     
-    if (statusDiv) statusDiv.innerText = `Connecting (${provider} + ${sttProvider})...`;
+    if (statusDiv) statusDiv.innerText = `Connecting...`;
     
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         if (statusDiv) {
-            statusDiv.innerText = `Connected 🟢 (STT: ${sttProvider.toUpperCase()} | AI: ${provider.toUpperCase()})`;
-            statusDiv.style.color = "#00ff88";
+            statusDiv.innerText = `Online 🟢 (${sttProvider.toUpperCase()} | ${bufferSize}s)`;
+            statusDiv.style.color = "#81c784"; // Muted Green
         }
-        // Sync pause state on reconnect if needed, or reset
         if (isPaused) {
             ws.send(JSON.stringify({ command: "pause" }));
         }
@@ -153,45 +195,18 @@ function connect() {
                 appendMessage(vieDiv, data.text, 'vie');
             } else if (data.type === 'error') {
                 appendMessage(engDiv, data.text, 'error');
-            } else if (data.type === 'status') {
-                // Sync status from server if needed (optional)
             }
         } catch (e) {
-            console.error("Error parsing WS message:", e);
+            console.error(e);
         }
     };
 
     ws.onclose = (e) => {
-        if (statusDiv) statusDiv.innerText = `Disconnected 🔴 (${e.code})`;
+        if (statusDiv) {
+            statusDiv.innerText = `Offline 🔴`;
+            statusDiv.style.color = "#e57373"; // Muted Red
+        }
     };
-    
-    ws.onerror = (e) => {
-        console.error("WebSocket error:", e);
-    };
-}
-
-// --- EVENT LISTENERS ---
-if (micSelect) {
-    micSelect.addEventListener('change', () => {
-        addSystemSeparator(`Switching Mic`);
-        connect();
-    });
-}
-
-if (providerSelect) {
-    providerSelect.addEventListener('change', () => {
-        const newProvider = providerSelect.options[providerSelect.selectedIndex].text;
-        addSystemSeparator(`Switching AI to ${newProvider}`);
-        connect();
-    });
-}
-
-if (sttSelect) {
-    sttSelect.addEventListener('change', () => {
-        const newSTT = sttSelect.options[sttSelect.selectedIndex].text;
-        addSystemSeparator(`Switching STT to ${newSTT}`);
-        connect();
-    });
 }
 
 // --- HELPERS ---
@@ -227,5 +242,4 @@ function scrollToBottom(container) {
     }
 }
 
-// Start the app
 document.addEventListener('DOMContentLoaded', init);

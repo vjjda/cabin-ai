@@ -30,10 +30,6 @@ settings = get_settings()
 class Transcriber(abc.ABC):
     @abc.abstractmethod
     async def process_audio(self, audio_chunk: bytes) -> str:
-        """
-        Nhận vào chunk audio (raw bytes), trả về text nếu đã nhận diện xong,
-        hoặc chuỗi rỗng nếu chưa đủ dữ liệu.
-        """
         pass
 
 class Translator(abc.ABC):
@@ -107,14 +103,17 @@ class OpenAITranslator(LLMTranslator):
 
 # --- Groq Transcriber (Real STT) ---
 class GroqTranscriber(Transcriber):
-    def __init__(self):
+    def __init__(self, buffer_duration: float = 1.5):
         if not settings.GROQ_API_KEY:
             logger.warning("⚠️ GROQ_API_KEY missing! STT will fail.")
         self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.model = settings.GROQ_STT_MODEL # Load from Config
+        self.model = settings.GROQ_STT_MODEL 
         
         self.buffer = bytearray()
-        self.buffer_threshold = 48000 # ~1.5s (16000Hz * 2 bytes * 1.5)
+        # Calculate threshold: SampleRate * Channels * BytesPerSample * Seconds
+        # 16000 * 1 * 2 * duration
+        self.buffer_threshold = int(settings.RATE * settings.CHANNELS * 2 * buffer_duration)
+        logger.info(f"Initialized GroqTranscriber with {buffer_duration}s buffer ({self.buffer_threshold} bytes)")
 
     async def process_audio(self, audio_chunk: bytes) -> str:
         self.buffer.extend(audio_chunk)
@@ -149,7 +148,7 @@ class GroqTranscriber(Transcriber):
 
 # --- Deepgram Transcriber (Real STT) ---
 class DeepgramTranscriber(Transcriber):
-    def __init__(self):
+    def __init__(self, buffer_duration: float = 1.5):
         if not HAS_DEEPGRAM:
             raise ImportError("Please install deepgram-sdk: pip install deepgram-sdk")
         
@@ -157,10 +156,11 @@ class DeepgramTranscriber(Transcriber):
             logger.warning("⚠️ DEEPGRAM_API_KEY missing!")
         
         self.client = DeepgramClient(settings.DEEPGRAM_API_KEY)
-        self.model = settings.DEEPGRAM_MODEL # Load from Config
+        self.model = settings.DEEPGRAM_MODEL
         
         self.buffer = bytearray()
-        self.buffer_threshold = 48000 
+        self.buffer_threshold = int(settings.RATE * settings.CHANNELS * 2 * buffer_duration)
+        logger.info(f"Initialized DeepgramTranscriber with {buffer_duration}s buffer")
 
     async def process_audio(self, audio_chunk: bytes) -> str:
         self.buffer.extend(audio_chunk)
@@ -202,7 +202,7 @@ class DeepgramTranscriber(Transcriber):
 
 # --- Mock Implementation ---
 class MockTranscriber(Transcriber):
-    def __init__(self) -> None:
+    def __init__(self, buffer_duration: float = 1.5) -> None:
         self.counter = 0
 
     async def process_audio(self, audio_chunk: bytes) -> str:

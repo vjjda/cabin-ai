@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Cabin Assistant</title>
+    <title>Cabin AI - Zen Mode</title>
     
     <!-- External CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
     
+    <!-- Google Fonts for Zen Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+
     <!-- Dynamic Style Injection (Server-side) -->
     <style>
         :root {
@@ -16,27 +21,48 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🎧 Cabin AI</h1>
-        
-        <div class="controls">
-            <!-- Pause Button -->
-            <button id="pause-btn" class="icon-btn" title="Pause/Resume (Space)">
-                ⏸️
-            </button>
+    
+    <!-- Main Content Area -->
+    <div class="zen-container">
+        <div class="stream-wrapper">
+            <div class="stream-column eng-stream">
+                <div class="stream-header">ORIGINAL</div>
+                <div id="eng-content" class="content-area"></div>
+            </div>
+            <div class="stream-column vie-stream">
+                <div class="stream-header">TRANSLATION</div>
+                <div id="vie-content" class="content-area"></div>
+            </div>
+        </div>
+    </div>
 
-            <div class="settings-group">
-                <div class="setting-item">
-                    <label>🎤 Input:</label>
+    <!-- Floating Action Buttons -->
+    <div class="fab-container">
+        <button id="pause-btn" class="fab-btn main-fab" title="Pause/Resume (Space)">⏸️</button>
+        <button id="settings-toggle" class="fab-btn sub-fab" title="Settings">⚙️</button>
+    </div>
+
+    <!-- Status Indicator -->
+    <div id="status" class="status-indicator">Ready</div>
+
+    <!-- Settings Overlay (Hidden by default) -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button id="close-settings" class="close-btn">&times;</button>
+            </div>
+            
+            <div class="settings-body">
+                <div class="setting-group">
+                    <label>🎤 Microphone</label>
                     <select id="mic-select">
                         <option value="" disabled selected>Loading...</option>
                     </select>
                 </div>
-            </div>
 
-            <div class="settings-group">
-                <div class="setting-item">
-                    <label>🎙️ STT:</label>
+                <div class="setting-group">
+                    <label>🎙️ STT Engine</label>
                     <select id="stt-select">
                         <option value="groq">⚡ Groq Whisper</option>
                         <option value="deepgram">🌊 Deepgram Nova-2</option>
@@ -44,8 +70,8 @@
                     </select>
                 </div>
 
-                <div class="setting-item">
-                    <label>🧠 AI:</label>
+                <div class="setting-group">
+                    <label>🧠 AI Translator</label>
                     <select id="provider-select">
                         <option value="groq">⚡ Groq (Llama3)</option>
                         <option value="openai">🧠 OpenAI (GPT-4o)</option>
@@ -53,28 +79,23 @@
                     </select>
                 </div>
 
-                <div class="setting-item">
-                    <label>📏 Padding:</label>
-                    <input type="range" id="padding-slider" min="10" max="80" value="{{UI_SCROLL_PADDING}}">
-                    <span id="padding-val" class="slider-val">{{UI_SCROLL_PADDING}}%</span>
+                <div class="setting-group">
+                    <label>⏱️ Buffer Size: <span id="buffer-val" class="highlight-val">1.5s</span></label>
+                    <input type="range" id="buffer-slider" min="0.5" max="5.0" step="0.5" value="1.5">
+                    <p class="hint">Higher buffer = Better accuracy, Higher latency.</p>
                 </div>
+
+                <div class="setting-group">
+                    <label>📏 Scroll Padding: <span id="padding-val" class="highlight-val">{{UI_SCROLL_PADDING}}%</span></label>
+                    <input type="range" id="padding-slider" min="10" max="80" value="{{UI_SCROLL_PADDING}}">
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="apply-btn" class="apply-btn">Apply & Reconnect</button>
             </div>
         </div>
     </div>
-    
-    <div class="container">
-        <div class="panel">
-            <div class="panel-header">🇬🇧 English Stream</div>
-            <div class="content-area" id="eng-content"></div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-header">🇻🇳 Vietnamese Translation</div>
-            <div class="content-area" id="vie-content"></div>
-        </div>
-    </div>
-
-    <div id="status">Ready</div>
 
     <!-- Configuration Injection (Server-side) -->
     <script>

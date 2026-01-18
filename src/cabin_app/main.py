@@ -24,8 +24,13 @@ from cabin_app.services import (
     HAS_DEEPGRAM
 )
 
+# --- CONFIG LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("CabinServer")
+
+# Suppress noisy HTTP logs from libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 app = FastAPI()
 settings = get_settings()
@@ -95,7 +100,8 @@ async def websocket_endpoint(
     websocket: WebSocket, 
     device_id: Optional[int] = Query(None),
     provider: str = Query("mock"), # Translation Model
-    stt_provider: str = Query("groq") # STT Model
+    stt_provider: str = Query("groq"), # STT Model
+    buffer: float = Query(1.5) # Buffer Duration (seconds)
 ):
     await websocket.accept()
     
@@ -108,22 +114,22 @@ async def websocket_endpoint(
 
     if stt_choice == "deepgram":
         if HAS_DEEPGRAM and settings.DEEPGRAM_API_KEY:
-            current_transcriber = DeepgramTranscriber()
+            current_transcriber = DeepgramTranscriber(buffer_duration=buffer)
         else:
             logger.warning("Deepgram request but missing SDK/Key. Fallback to Mock.")
-            current_transcriber = MockTranscriber()
+            current_transcriber = MockTranscriber(buffer_duration=buffer)
             
     elif stt_choice == "groq":
         if settings.GROQ_API_KEY:
-            current_transcriber = GroqTranscriber()
+            current_transcriber = GroqTranscriber(buffer_duration=buffer)
         else:
             logger.warning("Groq STT request but Key missing. Fallback to Mock.")
-            current_transcriber = MockTranscriber()
+            current_transcriber = MockTranscriber(buffer_duration=buffer)
             
     else:
-        current_transcriber = MockTranscriber()
+        current_transcriber = MockTranscriber(buffer_duration=buffer)
     
-    logger.info(f"🔗 Connected | Mic: {device_id} | STT: {stt_choice} | AI: {provider}")
+    logger.info(f"🔗 Connected | Mic: {device_id} | STT: {stt_choice} (Buf: {buffer}s) | AI: {provider}")
     
     audio_streamer = AudioStreamer()
     
