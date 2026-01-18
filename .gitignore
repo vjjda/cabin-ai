@@ -1,0 +1,50 @@
+# --- Python General ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+# Tên thư mục venv phổ biến
+.venv/
+venv/
+env/
+ENV/
+
+# --- Distribution / Build ---
+# Rất quan trọng khi dùng pyproject.toml và pip install -e .
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Environment Variables (SECURITY WARNING) ---
+# Không bao giờ commit file chứa API Key
+.env
+.env.*
+!.env.example
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS Specific ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Logs & Databases ---
+logs/
+*.log
+*.sqlite3
+
+# --- Testing & Type Checking ---
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/

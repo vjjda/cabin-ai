@@ -1,27 +1,22 @@
-# Path: audio_core.py
+# Path: src/cabin_app/audio_core.py
 import pyaudio
 import logging
 from typing import Generator, Optional
-from config import get_settings
+# Import absolute path từ root package
+from cabin_app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 class AudioStreamer:
-    """
-    Class chịu trách nhiệm duy nhất: Đọc dữ liệu từ Microphone
-    và yield ra các chunk bytes.
-    """
     def __init__(self) -> None:
         self.p = pyaudio.PyAudio()
         self.stream: Optional[pyaudio.Stream] = None
 
     def start_stream(self) -> Generator[bytes, None, None]:
-        """Mở mic và trả về generator chứa raw bytes"""
         try:
-            # paInt16 = 8. Hardcode để tránh dependency vòng, nhưng tốt nhất nên dùng pyaudio.paInt16
             self.stream = self.p.open(
-                format=pyaudio.paInt16,
+                format=pyaudio.paInt16, # Hoặc dùng settings.FORMAT
                 channels=settings.CHANNELS,
                 rate=settings.RATE,
                 input=True,
