@@ -14,10 +14,14 @@ from cabin_app.config import get_settings
 from cabin_app.audio_core import AudioStreamer
 from cabin_app.services import (
     MockTranscriber, 
+    GroqTranscriber,
+    DeepgramTranscriber, # Import class mới
     MockTranslator, 
     GroqTranslator, 
     OpenAITranslator,
-    Translator
+    Translator,
+    Transcriber,
+    HAS_DEEPGRAM
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -44,14 +48,42 @@ def load_glossary() -> Dict[str, str]:
 
 global_glossary = load_glossary()
 
-# --- 2. Initialize Translators Map ---
-# Khởi tạo sẵn các translator để switch nhanh
+# --- 2. Initialize Translators & Transcriber ---
 translators_map: Dict[str, Translator] = {
     "mock": MockTranslator(),
     "groq": GroqTranslator(),
     "openai": OpenAITranslator()
 }
-transcriber = MockTranscriber()
+
+# Chọn Transcriber (STT) dựa trên config STT_PROVIDER
+transcriber: Transcriber
+stt_provider = settings.STT_PROVIDER.lower()
+
+if stt_provider == "deepgram":
+    if HAS_DEEPGRAM and settings.DEEPGRAM_API_KEY:
+        transcriber = DeepgramTranscriber()
+        logger.info(f"🎙️ STT Engine: Deepgram ({settings.DEEPGRAM_MODEL})")
+    else:
+        logger.warning("⚠️ Deepgram configured but SDK/Key missing. Falling back to Groq.")
+        # Fallback to Groq
+        if settings.GROQ_API_KEY:
+            transcriber = GroqTranscriber()
+            logger.info(f"🎙️ STT Engine: Groq Whisper ({settings.GROQ_STT_MODEL})")
+        else:
+            transcriber = MockTranscriber()
+
+elif stt_provider == "groq":
+    if settings.GROQ_API_KEY:
+        transcriber = GroqTranscriber()
+        logger.info(f"🎙️ STT Engine: Groq Whisper ({settings.GROQ_STT_MODEL})")
+    else:
+        logger.warning("⚠️ Groq API Key missing. Falling back to Mock.")
+        transcriber = MockTranscriber()
+
+else:
+    transcriber = MockTranscriber()
+    logger.info("🎙️ STT Engine: Mock")
+
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -64,12 +96,10 @@ async def get():
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html_content = f.read()
     
-    # Inject giá trị mặc định vào HTML để JS đọc
     html_content = html_content.replace(
         "{{UI_SCROLL_PADDING}}", 
         str(settings.UI_SCROLL_PADDING)
     )
-    # Inject provider mặc định
     html_content = html_content.replace(
         "{{TRANSLATION_PROVIDER}}", 
         settings.TRANSLATION_PROVIDER
@@ -84,53 +114,75 @@ async def get_devices():
     temp.stop_stream()
     return JSONResponse(content=devices)
 
-# --- 3. WebSocket with Dynamic Provider ---
+# --- 3. WebSocket with Dynamic Provider & Pause Logic ---
 @app.websocket("/ws/cabin")
 async def websocket_endpoint(
     websocket: WebSocket, 
     device_id: Optional[int] = Query(None),
-    provider: str = Query("mock") # Nhận tham số provider từ Client
+    provider: str = Query("mock")
 ):
     await websocket.accept()
     
-    # Chọn translator dựa trên request của user
-    # Nếu provider không hợp lệ, fallback về Mock
     selected_translator = translators_map.get(provider.lower(), translators_map["mock"])
     
     logger.info(f"🔗 Connected | Mic: {device_id} | AI: {selected_translator.__class__.__name__}")
     
     audio_streamer = AudioStreamer()
     
+    # Pause Control Logic
+    pause_event = asyncio.Event()
+    pause_event.set() # Start in RUNNING state (not paused)
+
+    async def listen_for_commands():
+        """Task chạy nền để nhận lệnh từ Client (Pause/Resume)"""
+        try:
+            async for raw_msg in websocket.iter_json():
+                command = raw_msg.get("command")
+                if command == "pause":
+                    pause_event.clear()
+                    logger.info("⏸️ Paused")
+                    await websocket.send_json({"type": "status", "paused": True})
+                elif command == "resume":
+                    pause_event.set()
+                    logger.info("▶️ Resumed")
+                    await websocket.send_json({"type": "status", "paused": False})
+        except Exception:
+            pass # Connection closed or error
+
+    command_task = asyncio.create_task(listen_for_commands())
+    
     try:
         audio_generator = audio_streamer.start_stream(device_index=device_id)
-    except Exception as e:
-        logger.error(f"Mic Error: {e}")
-        await websocket.close()
-        return
-
-    try:
+        
         for chunk in audio_generator:
             if websocket.client_state.name == "DISCONNECTED":
                 break
 
-            # STT
+            # Kiểm tra trạng thái Pause
+            if not pause_event.is_set():
+                await asyncio.sleep(0.1) # Nhường CPU khi pause
+                continue
+
+            # STT Processing
             english_text = await transcriber.process_audio(chunk)
 
             if english_text:
                 await websocket.send_json({"type": "transcript", "text": english_text})
                 
-                # Translation (Dùng translator đã chọn)
+                # Translation
                 vietnamese_text = await selected_translator.translate(english_text, global_glossary)
                 
                 await websocket.send_json({"type": "translation", "text": vietnamese_text})
             
-            await asyncio.sleep(0.01)
+            # Quan trọng: sleep(0) để event loop có thể chuyển sang command_task xử lý tin nhắn
+            await asyncio.sleep(0)
 
     except WebSocketDisconnect:
         logger.info("Disconnected")
     except Exception as e:
         logger.error(f"WS Error: {e}")
     finally:
+        command_task.cancel()
         audio_streamer.stop_stream()
 
 def start():

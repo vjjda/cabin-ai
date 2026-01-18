@@ -16,8 +16,15 @@ class Settings(BaseSettings):
 
     # AI Settings (Default values)
     TRANSLATION_PROVIDER: Literal["groq", "openai", "mock"] = "groq"
-    GROQ_MODEL: str = "llama3-8b-8192"
+    
+    # Text Translation Models
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
     OPENAI_MODEL: str = "gpt-4o-mini"
+    
+    # Speech-to-Text (STT) Configuration
+    STT_PROVIDER: Literal["groq", "deepgram", "mock"] = "groq"
+    GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
+    DEEPGRAM_MODEL: str = "nova-2"
     
     DEEPGRAM_API_KEY: str = ""
     GROQ_API_KEY: str = ""
@@ -28,8 +35,13 @@ class Settings(BaseSettings):
     UI_SCROLL_PADDING: int = 30 
 
     class Config:
-        env_file = ".env"
+        # Tự động tìm .env ở root project (cách config.py 2 cấp thư mục: src/cabin_app/../../.env)
+        from pathlib import Path
+        _BASE_DIR = Path(__file__).resolve().parent
+        _ROOT_DIR = _BASE_DIR.parent.parent
+        env_file = str(_ROOT_DIR / ".env")
         env_file_encoding = "utf-8"
+        extra = "ignore" # Bỏ qua các biến thừa trong .env nếu có
 
 @lru_cache()
 def get_settings() -> Settings:
