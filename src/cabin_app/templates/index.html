@@ -6,20 +6,80 @@
     <title>AI Cabin Assistant</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
-        /* Thiết lập biến CSS toàn cục dựa trên Config được inject */
         :root {
+            /* Giá trị khởi tạo từ Python Config */
             --scroll-padding: {{UI_SCROLL_PADDING}}vh;
+        }
+        
+        /* CSS cho phần Settings mới */
+        .settings-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #2d2d2d;
+            padding: 8px 15px;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        .setting-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .setting-item label {
+            font-size: 0.9em;
+            color: #bbb;
+            font-weight: 500;
+        }
+        select, input[type="range"] {
+            background: #1a1a1a;
+            color: white;
+            border: 1px solid #555;
+            padding: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        select:focus, input:focus {
+            outline: 2px solid #00ff88;
+        }
+        .slider-val {
+            min-width: 30px;
+            font-size: 0.9em;
+            color: #00ff88;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🎧 Cabin AI Assistant</h1>
+        <h1>🎧 Cabin AI</h1>
+        
         <div class="controls">
-            <label for="mic-select">🎤 Input:</label>
-            <select id="mic-select">
-                <option value="" disabled selected>Loading devices...</option>
-            </select>
+            <div class="settings-group">
+                <div class="setting-item">
+                    <label>🎤 Input:</label>
+                    <select id="mic-select" style="min-width: 200px;">
+                        <option value="" disabled selected>Loading...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <div class="setting-item">
+                    <label>🧠 AI:</label>
+                    <select id="provider-select">
+                        <option value="groq">⚡ Groq (Llama3)</option>
+                        <option value="openai">🧠 OpenAI (GPT-4o)</option>
+                        <option value="mock">🧪 Mock Test</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label>📏 Padding:</label>
+                    <input type="range" id="padding-slider" min="10" max="80" value="{{UI_SCROLL_PADDING}}">
+                    <span id="padding-val" class="slider-val">{{UI_SCROLL_PADDING}}%</span>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -38,13 +98,33 @@
     <div id="status">Ready</div>
 
     <script>
-        // ... (Logic JS giữ nguyên) ...
+        // DOM Elements
         const engDiv = document.getElementById('eng-content');
         const vieDiv = document.getElementById('vie-content');
         const statusDiv = document.getElementById('status');
         const micSelect = document.getElementById('mic-select');
-        let ws = null;
+        const providerSelect = document.getElementById('provider-select');
+        const paddingSlider = document.getElementById('padding-slider');
+        const paddingVal = document.getElementById('padding-val');
 
+        let ws = null;
+        
+        // --- 1. INITIALIZATION ---
+        // Set giá trị mặc định cho Provider Select từ Server inject
+        providerSelect.value = "{{TRANSLATION_PROVIDER}}";
+
+        // --- 2. LOGIC UI SCROLL PADDING (Client-side only) ---
+        paddingSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            paddingVal.innerText = val + "%";
+            // Cập nhật biến CSS ngay lập tức
+            document.documentElement.style.setProperty('--scroll-padding', val + 'vh');
+            // Scroll xuống để thấy hiệu ứng
+            scrollToBottom(engDiv);
+            scrollToBottom(vieDiv);
+        });
+
+        // --- 3. CONNECTION LOGIC ---
         async function loadDevices() {
             try {
                 const res = await fetch('/api/devices');
@@ -57,27 +137,32 @@
                 devices.forEach(device => {
                     const option = document.createElement('option');
                     option.value = device.id;
-                    option.text = `🎤 ${device.name} (${device.channels} ch)`;
+                    option.text = `🎤 ${device.name}`;
                     micSelect.appendChild(option);
                 });
                 connect(); 
-            } catch (err) {
-                console.error("Error loading devices:", err);
-            }
+            } catch (err) { console.error(err); }
         }
 
         function connect() {
             if (ws) ws.close();
+
             const deviceId = micSelect.value;
+            const provider = providerSelect.value; // Lấy provider hiện tại
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            let wsUrl = `${protocol}//${window.location.host}/ws/cabin`;
-            if (deviceId) wsUrl += `?device_id=${deviceId}`;
             
-            statusDiv.innerText = "Connecting...";
+            // Xây dựng URL với các tham số
+            const urlParams = new URLSearchParams();
+            if (deviceId) urlParams.append('device_id', deviceId);
+            urlParams.append('provider', provider);
+
+            const wsUrl = `${protocol}//${window.location.host}/ws/cabin?${urlParams.toString()}`;
+            
+            statusDiv.innerText = `Connecting (${provider})...`;
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                statusDiv.innerText = "Connected 🟢";
+                statusDiv.innerText = `Connected 🟢 (${provider.toUpperCase()})`;
                 statusDiv.style.color = "#00ff88";
             };
 
@@ -92,14 +177,24 @@
                 }
             };
 
-            ws.onclose = (event) => statusDiv.innerText = `Disconnected 🔴 (${event.code})`;
+            ws.onclose = (e) => statusDiv.innerText = `Disconnected 🔴 (${e.code})`;
         }
 
+        // --- 4. EVENT LISTENERS ---
+        // Đổi Mic -> Reconnect
         micSelect.addEventListener('change', () => {
-            addSystemSeparator("Switching Microphone");
+            addSystemSeparator(`Switching Mic`);
             connect();
         });
 
+        // Đổi AI Provider -> Reconnect
+        providerSelect.addEventListener('change', () => {
+            const newProvider = providerSelect.options[providerSelect.selectedIndex].text;
+            addSystemSeparator(`Switching AI to ${newProvider}`);
+            connect();
+        });
+
+        // --- 5. HELPERS ---
         function addSystemSeparator(text) {
             const createSeparator = (msg) => {
                 const div = document.createElement('div');
@@ -121,9 +216,7 @@
             scrollToBottom(container);
         }
 
-        // Hàm cuộn trang tối ưu
         function scrollToBottom(container) {
-            // Cuộn xuống tận cùng (bao gồm cả phần padding ảo ::after)
             container.scrollTop = container.scrollHeight;
         }
 

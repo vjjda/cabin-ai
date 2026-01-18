@@ -14,18 +14,18 @@ class Settings(BaseSettings):
     CHANNELS: int = 1
     RATE: int = 16000
 
-    # AI Settings
-    TRANSLATION_PROVIDER: Literal["groq", "openai", "mock"] = "mock"
+    # AI Settings (Default values)
+    TRANSLATION_PROVIDER: Literal["groq", "openai", "mock"] = "groq"
     GROQ_MODEL: str = "llama3-8b-8192"
     OPENAI_MODEL: str = "gpt-4o-mini"
+    
     DEEPGRAM_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     
-    # --- UI UX CONFIG ---
-    # Khoảng trống thừa bên dưới (tính theo % chiều cao màn hình - vh)
-    # 40 nghĩa là dòng chữ mới nhất sẽ nằm ở khoảng 60% màn hình từ trên xuống.
-    UI_SCROLL_PADDING: int = 40 
+    # UI UX CONFIG
+    # Mặc định khoảng trống bên dưới là 30% (30vh)
+    UI_SCROLL_PADDING: int = 30 
 
     class Config:
         env_file = ".env"
