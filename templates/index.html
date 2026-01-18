@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Cabin Assistant</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --accent-color: #00ff88;
+            --secondary-color: #00ccff;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        h1 { margin-top: 0; color: var(--accent-color); }
+        .container {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            overflow: hidden;
+        }
+        .panel {
+            flex: 1;
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .panel-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #444;
+            padding-bottom: 5px;
+        }
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 1.2em;
+            line-height: 1.6;
+        }
+        .message {
+            margin-bottom: 12px;
+            padding: 8px;
+            border-radius: 4px;
+            animation: fadeIn 0.3s ease;
+        }
+        .eng { color: var(--secondary-color); background: rgba(0, 204, 255, 0.1); }
+        .vie { color: var(--accent-color); background: rgba(0, 255, 136, 0.1); font-weight: 500;}
+        
+        #status {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.8em;
+            color: #888;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎧 AI Cabin Support</h1>
+    
+    <div class="container">
+        <div class="panel">
+            <div class="panel-header">English Stream</div>
+            <div class="content-area" id="eng-content">
+                </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">Vietnamese Translation</div>
+            <div class="content-area" id="vie-content">
+                </div>
+        </div>
+    </div>
+
+    <div id="status">Disconnected 🔴</div>
+
+    <script>
+        const engDiv = document.getElementById('eng-content');
+        const vieDiv = document.getElementById('vie-content');
+        const statusDiv = document.getElementById('status');
+        let ws;
+
+        function connect() {
+            // Tự động detect host
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/cabin`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDiv.innerText = "Connected 🟢";
+                statusDiv.style.color = "#00ff88";
+                console.log("WS Connected");
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'transcript') {
+                    appendMessage(engDiv, data.text, 'eng');
+                } else if (data.type === 'translation') {
+                    appendMessage(vieDiv, data.text, 'vie');
+                }
+            };
+
+            ws.onclose = () => {
+                statusDiv.innerText = "Disconnected 🔴 (Reconnecting...)";
+                statusDiv.style.color = "#ff4444";
+                setTimeout(connect, 3000); // Auto reconnect
+            };
+        }
+
+        function appendMessage(container, text, className) {
+            const div = document.createElement('div');
+            div.className = `message ${className}`;
+            div.innerText = text;
+            container.appendChild(div);
+            // Auto scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Start
+        connect();
+    </script>
+</body>
+</html>
