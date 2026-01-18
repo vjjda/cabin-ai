@@ -22,7 +22,7 @@ const closeSettings = document.getElementById('close-settings');
 const applyBtn = document.getElementById('apply-btn');
 
 let ws = null;
-let isPaused = false;
+let isPaused = true; // Start Paused
 
 // --- INITIALIZATION ---
 function init() {
@@ -34,10 +34,22 @@ function init() {
         if (window.CABIN_CONFIG.DEFAULT_STT && sttSelect) {
             sttSelect.value = window.CABIN_CONFIG.DEFAULT_STT;
         }
+        // Initialize Buffer Slider
+        if (window.CABIN_CONFIG.BUFFER && bufferSlider) {
+            const b = window.CABIN_CONFIG.BUFFER;
+            bufferSlider.min = b.MIN;
+            bufferSlider.max = b.MAX;
+            bufferSlider.step = b.STEP;
+            bufferSlider.value = b.DEFAULT;
+            if (bufferVal) bufferVal.innerText = b.DEFAULT + "s";
+        }
     }
     
     // Load devices and start connection
     loadDevices();
+    
+    // Set initial UI state
+    updatePauseUI();
     
     // Global Shortcuts
     document.addEventListener('keydown', handleGlobalShortcuts);
@@ -52,13 +64,15 @@ function toggleModal(show) {
     }
 }
 
-settingsToggle.addEventListener('click', () => toggleModal(true));
-closeSettings.addEventListener('click', () => toggleModal(false));
+if (settingsToggle) settingsToggle.addEventListener('click', () => toggleModal(true));
+if (closeSettings) closeSettings.addEventListener('click', () => toggleModal(false));
 
 // Close modal when clicking outside
-settingsModal.addEventListener('click', (e) => {
-    if (e.target === settingsModal) toggleModal(false);
-});
+if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) toggleModal(false);
+    });
+}
 
 // Sliders
 if (paddingSlider) {
@@ -75,6 +89,17 @@ if (bufferSlider) {
     bufferSlider.addEventListener('input', (e) => {
         const val = e.target.value;
         if (bufferVal) bufferVal.innerText = val + "s";
+    });
+    
+    // Send updated buffer config immediately when sliding stops? 
+    // Currently, we only apply on connect.
+    // For now, user has to reconnect to apply buffer changes effectively as it's an init param.
+    // Let's add a "Reconnecting..." hint or auto-reconnect logic if desired later.
+    // For now, simple UI update.
+    bufferSlider.addEventListener('change', () => {
+         // Auto reconnect when buffer changes for seamless UX
+         console.log("Buffer changed, reconnecting...");
+         connect(); 
     });
 }
 
@@ -101,13 +126,11 @@ function togglePause() {
 function updatePauseUI() {
     if (pauseBtn) {
         if (isPaused) {
-            pauseBtn.innerHTML = "▶️"; // Play icon
-            pauseBtn.classList.add("paused");
+            pauseBtn.classList.add("paused"); // Shows Play Icon via CSS
             pauseBtn.title = "Resume (Space)";
             addSystemSeparator("⏸️ Paused");
         } else {
-            pauseBtn.innerHTML = "⏸️"; // Pause icon
-            pauseBtn.classList.remove("paused");
+            pauseBtn.classList.remove("paused"); // Shows Pause Icon via CSS
             pauseBtn.title = "Pause (Space)";
             addSystemSeparator("▶️ Resumed");
         }
@@ -115,9 +138,12 @@ function updatePauseUI() {
 }
 
 function handleGlobalShortcuts(e) {
-    if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT" && settingsModal.classList.contains('hidden')) {
-        e.preventDefault();
-        togglePause();
+    // Only toggle if modal is hidden
+    if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+        if (settingsModal && settingsModal.classList.contains('hidden')) {
+            e.preventDefault();
+            togglePause();
+        }
     }
 }
 
@@ -160,7 +186,8 @@ function connect() {
     const deviceId = micSelect ? micSelect.value : "";
     const provider = providerSelect ? providerSelect.value : "mock";
     const sttProvider = sttSelect ? sttSelect.value : "groq";
-    const bufferSize = bufferSlider ? bufferSlider.value : "1.5";
+    // JS reads '3.0' from HTML default if not moved yet
+    const bufferSize = bufferSlider ? bufferSlider.value : "3.0"; 
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     

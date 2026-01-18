@@ -76,14 +76,25 @@ class AudioStreamer:
 
     def stop_stream(self) -> None:
         """Đóng stream an toàn"""
-        if self.stream:
-            if self.stream.is_active():
-                self.stream.stop_stream()
-            self.stream.close()
+        try:
+            if self.stream:
+                # Kiểm tra an toàn trước khi stop
+                try:
+                    if not self.stream.is_stopped():
+                        self.stream.stop_stream()
+                except Exception:
+                    pass
+                
+                self.stream.close()
+        except Exception:
+            pass # Bỏ qua mọi lỗi khi đóng stream
+        finally:
             self.stream = None
         
-        # Lưu ý: Thông thường ta nên terminate PyAudio, 
-        # nhưng vì class này được khởi tạo liên tục trong request, 
-        # ta terminate luôn để tránh leak resource.
-        self.p.terminate()
+        # Terminate PyAudio instance
+        try:
+            self.p.terminate()
+        except Exception:
+            pass
+            
         logger.info("Microphone stream closed.")

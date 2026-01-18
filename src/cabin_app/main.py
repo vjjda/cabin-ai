@@ -85,6 +85,12 @@ async def get():
         settings.STT_PROVIDER
     )
     
+    # Inject Buffer Configs
+    html_content = html_content.replace("{{BUFFER_DEFAULT}}", str(settings.BUFFER_DEFAULT))
+    html_content = html_content.replace("{{BUFFER_MIN}}", str(settings.BUFFER_MIN))
+    html_content = html_content.replace("{{BUFFER_MAX}}", str(settings.BUFFER_MAX))
+    html_content = html_content.replace("{{BUFFER_STEP}}", str(settings.BUFFER_STEP))
+    
     return HTMLResponse(content=html_content)
 
 @app.get("/api/devices")
@@ -101,7 +107,7 @@ async def websocket_endpoint(
     device_id: Optional[int] = Query(None),
     provider: str = Query("mock"), # Translation Model
     stt_provider: str = Query("groq"), # STT Model
-    buffer: float = Query(1.5) # Buffer Duration (seconds)
+    buffer: float = Query(3.0) # Will be overridden by client, default just fallback
 ):
     await websocket.accept()
     
@@ -135,7 +141,7 @@ async def websocket_endpoint(
     
     # Pause Control Logic
     pause_event = asyncio.Event()
-    pause_event.set() # Start in RUNNING state (not paused)
+    # pause_event.set() # Default to PAUSED state
 
     async def listen_for_commands():
         """Task chạy nền để nhận lệnh từ Client (Pause/Resume)"""

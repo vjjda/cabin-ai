@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # UI UX CONFIG
     # Mặc định khoảng trống bên dưới là 30% (30vh)
     UI_SCROLL_PADDING: int = 30 
+    
+    # Buffer Settings (Seconds)
+    BUFFER_DEFAULT: float = 3.0
+    BUFFER_MIN: float = 1.0
+    BUFFER_MAX: float = 10.0
+    BUFFER_STEP: float = 0.5
 
     class Config:
         # Tự động tìm .env ở root project (cách config.py 2 cấp thư mục: src/cabin_app/../../.env)
