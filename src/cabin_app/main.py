@@ -90,10 +90,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
 def start():
     """Entry point for command line"""
-    # reload=True chỉ hoạt động tốt nếu trỏ vào string path, không phải object app trực tiếp
-    # Tuy nhiên khi chạy qua entry_point, reload đôi khi gặp vấn đề về path.
-    # Để an toàn nhất khi dev, ta dùng chuỗi import string.
-    uvicorn.run("cabin_app.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+    # Lấy đường dẫn tuyệt đối tới thư mục 'src' (thư mục cha của cabin_app)
+    # BASE_DIR đang là .../src/cabin_app
+    # Ta muốn watch cả thư mục 'src' để bao quát hơn
+    src_dir = BASE_DIR.parent 
+    
+    uvicorn.run(
+        "cabin_app.main:app", 
+        host=settings.HOST, 
+        port=settings.PORT, 
+        reload=True,
+        # CHỈ ĐỊNH RÕ THƯ MỤC CẦN WATCH
+        reload_dirs=[str(src_dir)]
+    )
 
 if __name__ == "__main__":
     start()
