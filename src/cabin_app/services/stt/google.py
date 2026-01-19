@@ -19,18 +19,25 @@ class GoogleTranscriber(Transcriber):
         if not HAS_GOOGLE_SPEECH:
             raise ImportError("Please install google-cloud-speech: pip install google-cloud-speech")
         
-        self.client = speech.SpeechClient()
-        
-        self.config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=settings.RATE,
-            language_code="en-US",
-            model="latest_long" 
-        )
+        try:
+            self.client = speech.SpeechClient()
+            self.config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=settings.RATE,
+                language_code="en-US",
+                model="latest_long" 
+            )
+        except Exception as e:
+            logger.error(f"❌ Google Cloud STT Init Failed (Check JSON Key): {e}")
+            self.client = None # Mark as failed
 
     async def _transcribe(self, audio_data: bytes) -> str:
+        if not self.client:
+            return "[Lỗi Auth Google STT]"
+
         try:
             audio = speech.RecognitionAudio(content=audio_data)
+            # Synchronous call (blocking), consider running in executor if slow
             response = self.client.recognize(config=self.config, audio=audio)
             
             transcript = ""
@@ -40,5 +47,8 @@ class GoogleTranscriber(Transcriber):
             return transcript.strip()
             
         except Exception as e:
+            if "invalid_grant" in str(e):
+                logger.error("❌ Google Credential Invalid/Expired. Please renew JSON key.")
+                return "[Lỗi Key Google]"
             logger.error(f"Google STT Error: {e}")
             return ""
