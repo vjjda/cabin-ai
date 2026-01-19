@@ -12,16 +12,16 @@ from fastapi.staticfiles import StaticFiles
 
 from cabin_app.config import get_settings
 from cabin_app.audio_core import AudioStreamer
+
+# --- NEW SERVICES IMPORT STRUCTURE ---
 from cabin_app.services import (
-    MockTranscriber, 
-    GroqTranscriber,
-    DeepgramTranscriber,
-    MockTranslator, 
-    GroqTranslator, 
-    OpenAITranslator,
-    Translator,
-    Transcriber,
-    HAS_DEEPGRAM
+    Transcriber, Translator,
+    # STT
+    GroqTranscriber, DeepgramTranscriber, GoogleTranscriber, MockTranscriber,
+    HAS_DEEPGRAM, HAS_GOOGLE_SPEECH,
+    # Translation
+    GroqTranslator, OpenAITranslator, GoogleTranslator, MockTranslator,
+    HAS_GOOGLE_GENAI
 )
 
 # --- CONFIG LOGGING ---
@@ -31,6 +31,7 @@ logger = logging.getLogger("CabinServer")
 # Suppress noisy HTTP logs from libraries
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("google.auth").setLevel(logging.WARNING) # Suppress Google Auth logs
 
 app = FastAPI()
 settings = get_settings()
@@ -54,10 +55,12 @@ def load_glossary() -> Dict[str, str]:
 global_glossary = load_glossary()
 
 # --- 2. Initialize Translators Map ---
+# Khởi tạo sẵn các Translator (trừ khi cần tham số động)
 translators_map: Dict[str, Translator] = {
     "mock": MockTranslator(),
     "groq": GroqTranslator(),
-    "openai": OpenAITranslator()
+    "openai": OpenAITranslator(),
+    "google": GoogleTranslator() if HAS_GOOGLE_GENAI else MockTranslator()
 }
 
 if STATIC_DIR.exists():
@@ -71,19 +74,10 @@ async def get():
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html_content = f.read()
     
-    html_content = html_content.replace(
-        "{{UI_SCROLL_PADDING}}", 
-        str(settings.UI_SCROLL_PADDING)
-    )
-    # Inject both provider defaults
-    html_content = html_content.replace(
-        "{{TRANSLATION_PROVIDER}}", 
-        settings.TRANSLATION_PROVIDER
-    )
-    html_content = html_content.replace(
-        "{{STT_PROVIDER}}", 
-        settings.STT_PROVIDER
-    )
+    # Inject Configs
+    html_content = html_content.replace("{{UI_SCROLL_PADDING}}", str(settings.UI_SCROLL_PADDING))
+    html_content = html_content.replace("{{TRANSLATION_PROVIDER}}", settings.TRANSLATION_PROVIDER)
+    html_content = html_content.replace("{{STT_PROVIDER}}", settings.STT_PROVIDER)
     
     # Inject Buffer Configs
     html_content = html_content.replace("{{BUFFER_DEFAULT}}", str(settings.BUFFER_DEFAULT))
@@ -107,7 +101,7 @@ async def websocket_endpoint(
     device_id: Optional[int] = Query(None),
     provider: str = Query("mock"), # Translation Model
     stt_provider: str = Query("groq"), # STT Model
-    buffer: float = Query(3.0) # Will be overridden by client, default just fallback
+    buffer: float = Query(settings.BUFFER_DEFAULT) # Buffer Duration (seconds)
 ):
     await websocket.accept()
     
@@ -125,6 +119,17 @@ async def websocket_endpoint(
             logger.warning("Deepgram request but missing SDK/Key. Fallback to Mock.")
             current_transcriber = MockTranscriber(buffer_duration=buffer)
             
+    elif stt_choice == "google":
+        if HAS_GOOGLE_SPEECH: # Google Client tự tìm Credential
+            try:
+                current_transcriber = GoogleTranscriber(buffer_duration=buffer)
+            except Exception as e:
+                logger.error(f"Failed to init Google STT: {e}")
+                current_transcriber = MockTranscriber(buffer_duration=buffer)
+        else:
+            logger.warning("Google STT request but google-cloud-speech missing. Fallback to Mock.")
+            current_transcriber = MockTranscriber(buffer_duration=buffer)
+
     elif stt_choice == "groq":
         if settings.GROQ_API_KEY:
             current_transcriber = GroqTranscriber(buffer_duration=buffer)
@@ -141,7 +146,7 @@ async def websocket_endpoint(
     
     # Pause Control Logic
     pause_event = asyncio.Event()
-    # pause_event.set() # Default to PAUSED state
+    # Default to PAUSED state (event not set)
 
     async def listen_for_commands():
         """Task chạy nền để nhận lệnh từ Client (Pause/Resume)"""

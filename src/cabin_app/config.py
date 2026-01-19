@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    GOOGLE_API_KEY: str = "" # For Gemini
+    GOOGLE_PROJECT_ID: str = "" # For Google Cloud STT
     
     # UI UX CONFIG
     # Mặc định khoảng trống bên dưới là 30% (30vh)
