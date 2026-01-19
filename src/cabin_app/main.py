@@ -2,6 +2,10 @@
 import asyncio
 import logging
 import json
+import warnings
+# Suppress Pydantic V1 warnings from Deepgram SDK running on newer Python versions
+warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality isn't compatible")
+
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -84,6 +88,10 @@ async def get():
     html_content = html_content.replace("{{BUFFER_MIN}}", str(settings.BUFFER_MIN))
     html_content = html_content.replace("{{BUFFER_MAX}}", str(settings.BUFFER_MAX))
     html_content = html_content.replace("{{BUFFER_STEP}}", str(settings.BUFFER_STEP))
+    
+    # Inject Options Registry
+    html_content = html_content.replace("{{AI_OPTIONS}}", json.dumps(settings.AI_OPTIONS))
+    html_content = html_content.replace("{{STT_OPTIONS}}", json.dumps(settings.STT_OPTIONS))
     
     return HTMLResponse(content=html_content)
 

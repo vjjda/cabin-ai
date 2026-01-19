@@ -89,20 +89,14 @@
                 <div class="setting-group">
                     <label>🎙️ STT Engine</label>
                     <select id="stt-select">
-                        <option value="groq">⚡ Groq Whisper</option>
-                        <option value="deepgram">🌊 Deepgram Nova-2</option>
-                        <option value="google">☁️ Google Cloud STT</option>
-                        <option value="mock">🧪 Mock Test</option>
+                        <!-- Options loaded dynamically -->
                     </select>
                 </div>
 
                 <div class="setting-group">
                     <label>🧠 AI Translator</label>
                     <select id="provider-select">
-                        <option value="groq">⚡ Groq (Llama3)</option>
-                        <option value="openai">🧠 OpenAI (GPT-4o)</option>
-                        <option value="google">✨ Google Gemini 1.5</option>
-                        <option value="mock">🧪 Mock Test</option>
+                        <!-- Options loaded dynamically -->
                     </select>
                 </div>
 
@@ -127,6 +121,10 @@
                 MIN: {{BUFFER_MIN}},
                 MAX: {{BUFFER_MAX}},
                 STEP: {{BUFFER_STEP}}
+            },
+            OPTIONS: {
+                AI: {{AI_OPTIONS}},
+                STT: {{STT_OPTIONS}}
             }
         };
     </script>

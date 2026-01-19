@@ -24,19 +24,57 @@ const applyBtn = document.getElementById('apply-btn');
 let ws = null;
 let isPaused = true; // Start Paused
 
+// --- LOCAL STORAGE HELPERS ---
+function saveSettings() {
+    const settings = {
+        // mic: micSelect.value, // Mic ID changes often, maybe better not to save strictly or handle carefully
+        stt: sttSelect ? sttSelect.value : null,
+        provider: providerSelect ? providerSelect.value : null,
+        buffer: bufferSlider ? bufferSlider.value : null,
+        padding: paddingSlider ? paddingSlider.value : null
+    };
+    localStorage.setItem('cabin_settings', JSON.stringify(settings));
+}
+
+function loadSavedSettings() {
+    try {
+        const saved = localStorage.getItem('cabin_settings');
+        if (!saved) return;
+        
+        const s = JSON.parse(saved);
+        
+        if (s.stt && sttSelect) sttSelect.value = s.stt;
+        if (s.provider && providerSelect) providerSelect.value = s.provider;
+        if (s.buffer && bufferSlider) {
+            bufferSlider.value = s.buffer;
+            if (bufferVal) bufferVal.innerText = s.buffer + "s";
+        }
+        if (s.padding && paddingSlider) {
+            paddingSlider.value = s.padding;
+            if (paddingVal) paddingVal.innerText = s.padding + "%";
+            document.documentElement.style.setProperty('--scroll-padding', s.padding + 'vh');
+        }
+    } catch (e) {
+        console.error("Error loading settings", e);
+    }
+}
+
+
 // --- INITIALIZATION ---
 function init() {
     // Inject Config Defaults
     if (window.CABIN_CONFIG) {
-        if (window.CABIN_CONFIG.DEFAULT_PROVIDER && providerSelect) {
-            providerSelect.value = window.CABIN_CONFIG.DEFAULT_PROVIDER;
+        const cfg = window.CABIN_CONFIG;
+        
+        // 1. Populate Dropdowns dynamically
+        if (cfg.OPTIONS) {
+            populateSelect(providerSelect, cfg.OPTIONS.AI, cfg.DEFAULT_PROVIDER);
+            populateSelect(sttSelect, cfg.OPTIONS.STT, cfg.DEFAULT_STT);
         }
-        if (window.CABIN_CONFIG.DEFAULT_STT && sttSelect) {
-            sttSelect.value = window.CABIN_CONFIG.DEFAULT_STT;
-        }
-        // Initialize Buffer Slider
-        if (window.CABIN_CONFIG.BUFFER && bufferSlider) {
-            const b = window.CABIN_CONFIG.BUFFER;
+
+        // Initialize Buffer Slider from Server Config
+        if (cfg.BUFFER && bufferSlider) {
+            const b = cfg.BUFFER;
             bufferSlider.min = b.MIN;
             bufferSlider.max = b.MAX;
             bufferSlider.step = b.STEP;
@@ -45,14 +83,32 @@ function init() {
         }
     }
     
-    // Load devices and start connection
+    // 2. Override with User Saved Settings (Persistence)
+    loadSavedSettings();
+    
+    // 3. Load devices and start connection
     loadDevices();
     
-    // Set initial UI state
+    // 4. Set initial UI state
     updatePauseUI();
     
-    // Global Shortcuts
+    // 5. Global Shortcuts
     document.addEventListener('keydown', handleGlobalShortcuts);
+}
+
+function populateSelect(selectEl, options, defaultValue) {
+    if (!selectEl || !options) return;
+    selectEl.innerHTML = '';
+    options.forEach(opt => {
+        const el = document.createElement('option');
+        el.value = opt.id;
+        el.innerText = opt.name;
+        selectEl.appendChild(el);
+    });
+    // Set default if provided
+    if (defaultValue) {
+        selectEl.value = defaultValue;
+    }
 }
 
 // --- UI LOGIC (Modal, Sliders) ---
@@ -67,14 +123,13 @@ function toggleModal(show) {
 if (settingsToggle) settingsToggle.addEventListener('click', () => toggleModal(true));
 if (closeSettings) closeSettings.addEventListener('click', () => toggleModal(false));
 
-// Close modal when clicking outside
 if (settingsModal) {
     settingsModal.addEventListener('click', (e) => {
         if (e.target === settingsModal) toggleModal(false);
     });
 }
 
-// Sliders
+// Sliders Events
 if (paddingSlider) {
     paddingSlider.addEventListener('input', (e) => {
         const val = e.target.value;
@@ -83,6 +138,7 @@ if (paddingSlider) {
         scrollToBottom(engDiv);
         scrollToBottom(vieDiv);
     });
+    paddingSlider.addEventListener('change', saveSettings); // Save on release
 }
 
 if (bufferSlider) {
@@ -91,20 +147,20 @@ if (bufferSlider) {
         if (bufferVal) bufferVal.innerText = val + "s";
     });
     
-    // Send updated buffer config immediately when sliding stops? 
-    // Currently, we only apply on connect.
-    // For now, user has to reconnect to apply buffer changes effectively as it's an init param.
-    // Let's add a "Reconnecting..." hint or auto-reconnect logic if desired later.
-    // For now, simple UI update.
     bufferSlider.addEventListener('change', () => {
-         // Auto reconnect when buffer changes for seamless UX
+         saveSettings();
          console.log("Buffer changed, reconnecting...");
          connect(); 
     });
 }
 
+if (providerSelect) providerSelect.addEventListener('change', saveSettings);
+if (sttSelect) sttSelect.addEventListener('change', saveSettings);
+
+
 if (applyBtn) {
     applyBtn.addEventListener('click', () => {
+        saveSettings(); // Save when Apply clicked
         toggleModal(false);
         addSystemSeparator("Applying Settings & Reconnecting...");
         connect();
@@ -126,11 +182,11 @@ function togglePause() {
 function updatePauseUI() {
     if (pauseBtn) {
         if (isPaused) {
-            pauseBtn.classList.add("paused"); // Shows Play Icon via CSS
+            pauseBtn.classList.add("paused"); 
             pauseBtn.title = "Resume (Space)";
             addSystemSeparator("⏸️ Paused");
         } else {
-            pauseBtn.classList.remove("paused"); // Shows Pause Icon via CSS
+            pauseBtn.classList.remove("paused");
             pauseBtn.title = "Pause (Space)";
             addSystemSeparator("▶️ Resumed");
         }
@@ -138,7 +194,6 @@ function updatePauseUI() {
 }
 
 function handleGlobalShortcuts(e) {
-    // Only toggle if modal is hidden
     if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
         if (settingsModal && settingsModal.classList.contains('hidden')) {
             e.preventDefault();
@@ -171,6 +226,9 @@ async function loadDevices() {
                 option.text = `🎤 ${device.name}`;
                 micSelect.appendChild(option);
             });
+            
+            // Restore saved mic if exists and still valid? 
+            // For now, let's keep default or user manual selection to avoid 'missing device' issues.
         }
         
         connect(); 
@@ -182,11 +240,9 @@ async function loadDevices() {
 function connect() {
     if (ws) ws.close();
 
-    // Gather Params
     const deviceId = micSelect ? micSelect.value : "";
     const provider = providerSelect ? providerSelect.value : "mock";
     const sttProvider = sttSelect ? sttSelect.value : "groq";
-    // JS reads '3.0' from HTML default if not moved yet
     const bufferSize = bufferSlider ? bufferSlider.value : "3.0"; 
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -206,7 +262,7 @@ function connect() {
     ws.onopen = () => {
         if (statusDiv) {
             statusDiv.innerText = `Online 🟢 (${sttProvider.toUpperCase()} | ${bufferSize}s)`;
-            statusDiv.style.color = "#81c784"; // Muted Green
+            statusDiv.style.color = "#81c784";
         }
         if (isPaused) {
             ws.send(JSON.stringify({ command: "pause" }));
@@ -231,7 +287,7 @@ function connect() {
     ws.onclose = (e) => {
         if (statusDiv) {
             statusDiv.innerText = `Offline 🔴`;
-            statusDiv.style.color = "#e57373"; // Muted Red
+            statusDiv.style.color = "#e57373";
         }
     };
 }
