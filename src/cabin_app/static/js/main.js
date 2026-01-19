@@ -11,6 +11,10 @@ const providerSelect = document.getElementById('provider-select');
 const sttSelect = document.getElementById('stt-select');
 const bufferSlider = document.getElementById('buffer-slider');
 const bufferVal = document.getElementById('buffer-val');
+const vadSlider = document.getElementById('vad-slider');
+const vadVal = document.getElementById('vad-val');
+const silenceSlider = document.getElementById('silence-slider');
+const silenceVal = document.getElementById('silence-val');
 const paddingSlider = document.getElementById('padding-slider');
 const paddingVal = document.getElementById('padding-val');
 
@@ -20,6 +24,7 @@ const settingsToggle = document.getElementById('settings-toggle');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettings = document.getElementById('close-settings');
 const applyBtn = document.getElementById('apply-btn');
+const refreshBtn = document.getElementById('refresh-models-btn');
 
 let ws = null;
 let isPaused = true; // Start Paused
@@ -27,10 +32,11 @@ let isPaused = true; // Start Paused
 // --- LOCAL STORAGE HELPERS ---
 function saveSettings() {
     const settings = {
-        // mic: micSelect.value, // Mic ID changes often, maybe better not to save strictly or handle carefully
         stt: sttSelect ? sttSelect.value : null,
         provider: providerSelect ? providerSelect.value : null,
         buffer: bufferSlider ? bufferSlider.value : null,
+        vad_threshold: vadSlider ? vadSlider.value : null,
+        vad_silence: silenceSlider ? silenceSlider.value : null,
         padding: paddingSlider ? paddingSlider.value : null
     };
     localStorage.setItem('cabin_settings', JSON.stringify(settings));
@@ -49,6 +55,14 @@ function loadSavedSettings() {
             bufferSlider.value = s.buffer;
             if (bufferVal) bufferVal.innerText = s.buffer + "s";
         }
+        if (s.vad_threshold && vadSlider) {
+            vadSlider.value = s.vad_threshold;
+            if (vadVal) vadVal.innerText = s.vad_threshold;
+        }
+        if (s.vad_silence && silenceSlider) {
+            silenceSlider.value = s.vad_silence;
+            if (silenceVal) silenceVal.innerText = s.vad_silence + "s";
+        }
         if (s.padding && paddingSlider) {
             paddingSlider.value = s.padding;
             if (paddingVal) paddingVal.innerText = s.padding + "%";
@@ -66,13 +80,10 @@ function init() {
     if (window.CABIN_CONFIG) {
         const cfg = window.CABIN_CONFIG;
         
-        // 1. Populate Dropdowns dynamically
-        if (cfg.OPTIONS) {
-            populateSelect(providerSelect, cfg.OPTIONS.AI, cfg.DEFAULT_PROVIDER);
-            populateSelect(sttSelect, cfg.OPTIONS.STT, cfg.DEFAULT_STT);
-        }
+        // Load Models Dynamically
+        loadModels(cfg);
 
-        // Initialize Buffer Slider from Server Config
+        // Initialize Sliders from Server Config
         if (cfg.BUFFER && bufferSlider) {
             const b = cfg.BUFFER;
             bufferSlider.min = b.MIN;
@@ -81,10 +92,18 @@ function init() {
             bufferSlider.value = b.DEFAULT;
             if (bufferVal) bufferVal.innerText = b.DEFAULT + "s";
         }
+        
+        if (cfg.VAD) {
+            if (vadSlider) {
+                vadSlider.value = cfg.VAD.THRESHOLD;
+                if (vadVal) vadVal.innerText = cfg.VAD.THRESHOLD;
+            }
+            if (silenceSlider) {
+                silenceSlider.value = cfg.VAD.SILENCE;
+                if (silenceVal) silenceVal.innerText = cfg.VAD.SILENCE + "s";
+            }
+        }
     }
-    
-    // 2. Override with User Saved Settings (Persistence)
-    loadSavedSettings();
     
     // 3. Load devices and start connection
     loadDevices();
@@ -96,6 +115,32 @@ function init() {
     document.addEventListener('keydown', handleGlobalShortcuts);
 }
 
+async function loadModels(cfg) {
+    try {
+        const res = await fetch('/api/models');
+        const data = await res.json();
+        
+        if (data.ai) {
+            populateSelect(providerSelect, data.ai, cfg.DEFAULT_PROVIDER);
+        }
+        if (data.stt) {
+            populateSelect(sttSelect, data.stt, cfg.DEFAULT_STT);
+        }
+        
+        // Restore Saved Settings AFTER models are loaded
+        loadSavedSettings();
+        
+    } catch (e) {
+        console.error("Error loading dynamic models:", e);
+        // Fallback to static config if API fails
+        if (cfg.OPTIONS) {
+             populateSelect(providerSelect, cfg.OPTIONS.AI, cfg.DEFAULT_PROVIDER);
+             populateSelect(sttSelect, cfg.OPTIONS.STT, cfg.DEFAULT_STT);
+        }
+        loadSavedSettings();
+    }
+}
+
 function populateSelect(selectEl, options, defaultValue) {
     if (!selectEl || !options) return;
     selectEl.innerHTML = '';
@@ -105,7 +150,6 @@ function populateSelect(selectEl, options, defaultValue) {
         el.innerText = opt.name;
         selectEl.appendChild(el);
     });
-    // Set default if provided
     if (defaultValue) {
         selectEl.value = defaultValue;
     }
@@ -138,7 +182,7 @@ if (paddingSlider) {
         scrollToBottom(engDiv);
         scrollToBottom(vieDiv);
     });
-    paddingSlider.addEventListener('change', saveSettings); // Save on release
+    paddingSlider.addEventListener('change', saveSettings); 
 }
 
 if (bufferSlider) {
@@ -154,16 +198,52 @@ if (bufferSlider) {
     });
 }
 
+if (vadSlider) {
+    vadSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (vadVal) vadVal.innerText = val;
+    });
+    vadSlider.addEventListener('change', () => {
+        saveSettings();
+        console.log("VAD changed, reconnecting...");
+        connect();
+    });
+}
+
+if (silenceSlider) {
+    silenceSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (silenceVal) silenceVal.innerText = val + "s";
+    });
+    silenceSlider.addEventListener('change', () => {
+        saveSettings();
+        console.log("Silence changed, reconnecting...");
+        connect();
+    });
+}
+
 if (providerSelect) providerSelect.addEventListener('change', saveSettings);
 if (sttSelect) sttSelect.addEventListener('change', saveSettings);
 
 
 if (applyBtn) {
     applyBtn.addEventListener('click', () => {
-        saveSettings(); // Save when Apply clicked
+        saveSettings(); 
         toggleModal(false);
         addSystemSeparator("Applying Settings & Reconnecting...");
         connect();
+    });
+}
+
+if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+        const originalText = refreshBtn.innerText;
+        refreshBtn.innerText = "⏳ Loading...";
+        try {
+            await loadModels(window.CABIN_CONFIG || {});
+        } finally {
+            refreshBtn.innerText = originalText;
+        }
     });
 }
 
@@ -226,9 +306,6 @@ async function loadDevices() {
                 option.text = `🎤 ${device.name}`;
                 micSelect.appendChild(option);
             });
-            
-            // Restore saved mic if exists and still valid? 
-            // For now, let's keep default or user manual selection to avoid 'missing device' issues.
         }
         
         connect(); 
@@ -243,7 +320,9 @@ function connect() {
     const deviceId = micSelect ? micSelect.value : "";
     const provider = providerSelect ? providerSelect.value : "mock";
     const sttProvider = sttSelect ? sttSelect.value : "groq";
-    const bufferSize = bufferSlider ? bufferSlider.value : "3.0"; 
+    const bufferSize = bufferSlider ? bufferSlider.value : "5.0"; 
+    const vadThr = vadSlider ? vadSlider.value : "500";
+    const vadSil = silenceSlider ? silenceSlider.value : "0.8";
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
@@ -252,6 +331,8 @@ function connect() {
     urlParams.append('provider', provider);
     urlParams.append('stt_provider', sttProvider);
     urlParams.append('buffer', bufferSize);
+    urlParams.append('vad_threshold', vadThr);
+    urlParams.append('vad_silence', vadSil);
 
     const wsUrl = `${protocol}//${window.location.host}/ws/cabin?${urlParams.toString()}`;
     
@@ -260,8 +341,14 @@ function connect() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+        // Helper to remove leading emojis (non-word/space chars at start)
+        const clean = (text) => text.replace(/^[^\w\d\s]+/, '').trim();
+        
+        const aiText = clean(providerSelect.options[providerSelect.selectedIndex].text);
+        const sttText = clean(sttSelect.options[sttSelect.selectedIndex].text);
+        
         if (statusDiv) {
-            statusDiv.innerText = `Online 🟢 (${sttProvider.toUpperCase()} | ${bufferSize}s)`;
+            statusDiv.innerText = `Online  •  ${sttText}  •  ${aiText}`;
             statusDiv.style.color = "#81c784";
         }
         if (isPaused) {
@@ -286,7 +373,7 @@ function connect() {
 
     ws.onclose = (e) => {
         if (statusDiv) {
-            statusDiv.innerText = `Offline 🔴`;
+            statusDiv.innerText = `Offline`;
             statusDiv.style.color = "#e57373";
         }
     };

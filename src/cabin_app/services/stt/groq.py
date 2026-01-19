@@ -10,23 +10,13 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 class GroqTranscriber(Transcriber):
-    def __init__(self, buffer_duration: float = 3.0):
+    def __init__(self, buffer_duration: float = 5.0, **kwargs):
+        super().__init__(buffer_duration, **kwargs)
+        
         if not settings.GROQ_API_KEY:
             logger.warning("⚠️ GROQ_API_KEY missing! STT will fail.")
         self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         self.model = settings.GROQ_STT_MODEL 
-        
-        self.buffer = bytearray()
-        self.buffer_threshold = int(settings.RATE * settings.CHANNELS * 2 * buffer_duration)
-        logger.info(f"Initialized GroqTranscriber with {buffer_duration}s buffer")
-
-    async def process_audio(self, audio_chunk: bytes) -> str:
-        self.buffer.extend(audio_chunk)
-        if len(self.buffer) >= self.buffer_threshold:
-            audio_data = bytes(self.buffer)
-            self.buffer = bytearray()
-            return await self._transcribe(audio_data)
-        return ""
 
     async def _transcribe(self, audio_data: bytes) -> str:
         try:

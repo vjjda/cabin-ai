@@ -3,11 +3,12 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Literal, List, Dict
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "Cabin AI Assistant"
     HOST: str = "0.0.0.0"
     PORT: int = 1309
-    
+
     # Audio Settings
     CHUNK_SIZE: int = 1024
     FORMAT: int = 8
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    GOOGLE_API_KEY: str = "" 
+    GOOGLE_API_KEY: str = ""
     GOOGLE_PROJECT_ID: str = ""
 
     # --- MODEL CONFIGURATION ---
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     # Specific Model IDs (Internal)
     GROQ_MODEL: str = "llama-3.1-8b-instant"
     OPENAI_MODEL: str = "gpt-4o-mini"
-    GOOGLE_MODEL: str = "gemini-1.5-flash-001" # Fix 404: Use specific version
-    
+    GOOGLE_MODEL: str = "gemini-2.0-flash-lite-preview-02-05"
+
     GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
     DEEPGRAM_MODEL: str = "nova-2"
 
@@ -39,7 +40,7 @@ class Settings(BaseSettings):
     AI_OPTIONS: List[Dict[str, str]] = [
         {"id": "groq", "name": "⚡ Groq (Llama 3.1)"},
         {"id": "openai", "name": "🧠 OpenAI (GPT-4o)"},
-        {"id": "google", "name": "✨ Google Gemini 1.5"},
+        {"id": "google", "name": "✨ Gemini 2.0 Flash Lite"},
         {"id": "mock", "name": "🧪 Mock Test"},
     ]
 
@@ -51,21 +52,28 @@ class Settings(BaseSettings):
     ]
 
     # Buffer Settings (Seconds)
-    BUFFER_DEFAULT: float = 3.0
+    BUFFER_DEFAULT: float = 5.0
     BUFFER_MIN: float = 1.0
     BUFFER_MAX: float = 10.0
     BUFFER_STEP: float = 0.5
-    
+
+    # VAD (Smart Buffering)
+    VAD_ENABLED: bool = True
+    VAD_THRESHOLD: int = 1000  # RMS Threshold (Adjust based on mic)
+    VAD_SILENCE_DURATION: float = 0.8  # Seconds of silence to trigger send
+
     # UI UX
-    UI_SCROLL_PADDING: int = 30 
+    UI_SCROLL_PADDING: int = 30
 
     class Config:
         from pathlib import Path
+
         _BASE_DIR = Path(__file__).resolve().parent
         _ROOT_DIR = _BASE_DIR.parent.parent
         env_file = str(_ROOT_DIR / ".env")
         env_file_encoding = "utf-8"
         extra = "ignore"
+
 
 @lru_cache()
 def get_settings() -> Settings:

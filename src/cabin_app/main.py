@@ -11,11 +11,12 @@ from typing import Optional, Dict
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from cabin_app.config import get_settings
 from cabin_app.audio_core import AudioStreamer
+from cabin_app.model_manager import ModelManager
 
 # --- NEW SERVICES IMPORT STRUCTURE ---
 from cabin_app.services import (
@@ -70,6 +71,16 @@ translators_map: Dict[str, Translator] = {
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    if (STATIC_DIR / "favicon.svg").exists():
+        return FileResponse(STATIC_DIR / "favicon.svg")
+    return HTMLResponse("") # Fallback
+
+@app.get("/.well-known/appspecific/com.chrome.devtools.json", include_in_schema=False)
+async def devtools_probe():
+    return JSONResponse(content={})
+
 @app.get("/")
 async def get():
     if not TEMPLATE_PATH.exists():
@@ -89,6 +100,10 @@ async def get():
     html_content = html_content.replace("{{BUFFER_MAX}}", str(settings.BUFFER_MAX))
     html_content = html_content.replace("{{BUFFER_STEP}}", str(settings.BUFFER_STEP))
     
+    # Inject VAD Configs
+    html_content = html_content.replace("{{VAD_THRESHOLD}}", str(settings.VAD_THRESHOLD))
+    html_content = html_content.replace("{{VAD_SILENCE}}", str(settings.VAD_SILENCE_DURATION))
+    
     # Inject Options Registry
     html_content = html_content.replace("{{AI_OPTIONS}}", json.dumps(settings.AI_OPTIONS))
     html_content = html_content.replace("{{STT_OPTIONS}}", json.dumps(settings.STT_OPTIONS))
@@ -102,53 +117,113 @@ async def get_devices():
     temp.stop_stream()
     return JSONResponse(content=devices)
 
+@app.get("/api/models")
+async def get_models():
+    """Dynamic Model Fetching"""
+    # 1. Fetch Google Models
+    google_models = ModelManager.get_google_models()
+    
+    # 2. Merge with Default Options
+    # Tạo danh sách options mới, thay thế mục 'google' tĩnh bằng danh sách động
+    ai_options = []
+    
+    # Add Static/Default Providers first
+    for opt in settings.AI_OPTIONS:
+        if opt['id'] != 'google':
+            ai_options.append(opt)
+    
+    # Add Dynamic Google Models
+    # Mỗi model sẽ có id="google:gemini-..." để frontend biết provider là google
+    for gm in google_models:
+        ai_options.append({
+            "id": f"google:{gm['id']}", # Format: provider:model_id
+            "name": gm['name']
+        })
+        
+    if not google_models:
+         # Fallback if fetch fails
+         ai_options.append({"id": "google", "name": "✨ Google Gemini (Default)"})
+
+    return JSONResponse(content={"ai": ai_options, "stt": settings.STT_OPTIONS})
+
+
 # --- 3. WebSocket with Dynamic Provider & Pause Logic ---
 @app.websocket("/ws/cabin")
 async def websocket_endpoint(
     websocket: WebSocket, 
     device_id: Optional[int] = Query(None),
-    provider: str = Query("mock"), # Translation Model
+    provider: str = Query("mock"), # Can be "google:gemini-2.0" or just "groq"
     stt_provider: str = Query("groq"), # STT Model
-    buffer: float = Query(settings.BUFFER_DEFAULT) # Buffer Duration (seconds)
+    buffer: float = Query(settings.BUFFER_DEFAULT), # Buffer Duration (seconds)
+    vad_threshold: int = Query(settings.VAD_THRESHOLD),
+    vad_silence: float = Query(settings.VAD_SILENCE_DURATION)
 ):
     await websocket.accept()
     
+    # 0. Parse Provider & Model
+    if ":" in provider:
+        provider_type, model_id = provider.split(":", 1)
+    else:
+        provider_type = provider
+        model_id = None
+
     # 1. Chọn Translator
-    selected_translator = translators_map.get(provider.lower(), translators_map["mock"])
+    selected_translator: Translator
+    
+    if provider_type == "google":
+        selected_translator = GoogleTranslator(model_name=model_id)
+    elif provider_type == "openai":
+        selected_translator = OpenAITranslator() # Add model support later if needed
+    elif provider_type == "groq":
+        selected_translator = GroqTranslator()
+    else:
+        selected_translator = MockTranslator()
     
     # 2. Chọn Transcriber (Dynamic instantiation per connection)
     current_transcriber: Transcriber
     stt_choice = stt_provider.lower()
+    
+    # VAD Params for Transcriber
+    t_kwargs = {
+        "buffer_duration": buffer,
+        "vad_threshold": vad_threshold,
+        "vad_silence": vad_silence
+    }
 
     if stt_choice == "deepgram":
         if HAS_DEEPGRAM and settings.DEEPGRAM_API_KEY:
-            current_transcriber = DeepgramTranscriber(buffer_duration=buffer)
+            try:
+                current_transcriber = DeepgramTranscriber(**t_kwargs)
+            except Exception as e:
+                logger.error(f"Deepgram Init Error: {e}")
+                current_transcriber = MockTranscriber(**t_kwargs)
         else:
-            logger.warning("Deepgram request but missing SDK/Key. Fallback to Mock.")
-            current_transcriber = MockTranscriber(buffer_duration=buffer)
+            reason = "SDK missing" if not HAS_DEEPGRAM else "API Key missing"
+            logger.warning(f"Deepgram request failed: {reason}. Fallback to Mock.")
+            current_transcriber = MockTranscriber(**t_kwargs)
             
     elif stt_choice == "google":
         if HAS_GOOGLE_SPEECH: # Google Client tự tìm Credential
             try:
-                current_transcriber = GoogleTranscriber(buffer_duration=buffer)
+                current_transcriber = GoogleTranscriber(**t_kwargs)
             except Exception as e:
                 logger.error(f"Failed to init Google STT: {e}")
-                current_transcriber = MockTranscriber(buffer_duration=buffer)
+                current_transcriber = MockTranscriber(**t_kwargs)
         else:
             logger.warning("Google STT request but google-cloud-speech missing. Fallback to Mock.")
-            current_transcriber = MockTranscriber(buffer_duration=buffer)
+            current_transcriber = MockTranscriber(**t_kwargs)
 
     elif stt_choice == "groq":
         if settings.GROQ_API_KEY:
-            current_transcriber = GroqTranscriber(buffer_duration=buffer)
+            current_transcriber = GroqTranscriber(**t_kwargs)
         else:
             logger.warning("Groq STT request but Key missing. Fallback to Mock.")
-            current_transcriber = MockTranscriber(buffer_duration=buffer)
+            current_transcriber = MockTranscriber(**t_kwargs)
             
     else:
-        current_transcriber = MockTranscriber(buffer_duration=buffer)
+        current_transcriber = MockTranscriber(**t_kwargs)
     
-    logger.info(f"🔗 Connected | Mic: {device_id} | STT: {stt_choice} (Buf: {buffer}s) | AI: {provider}")
+    logger.info(f"🔗 Connected | Mic: {device_id} | STT: {stt_choice} (Buf: {buffer}s VAD: {vad_threshold}) | AI: {provider}")
     
     audio_streamer = AudioStreamer()
     
